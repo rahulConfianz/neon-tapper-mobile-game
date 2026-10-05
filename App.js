@@ -1,25 +1,32 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, Text, View, Dimensions, Animated, Easing } from 'react-native';
+import { StyleSheet, Text, View, TextInput, Dimensions, Animated, Easing, ScrollView, ImageBackground } from 'react-native';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
 const LEVEL_COLORS = [
-  { name: 'Red', hex: '#FF5252' },
-  { name: 'Blue', hex: '#448AFF' },
-  { name: 'Green', hex: '#69F0AE' },
-  { name: 'Purple', hex: '#E040FB' },
-  { name: 'Yellow', hex: '#FFD740' },
-  { name: 'Orange', hex: '#FF6E40' },
-  { name: 'Cyan', hex: '#18FFFF' },
+  { name: 'Red', hex: '#FF3333' },
+  { name: 'Blue', hex: '#3366FF' },
+  { name: 'Green', hex: '#00E676' },
+  { name: 'Purple', hex: '#D500F9' },
+  { name: 'Yellow', hex: '#FFEA00' },
+  { name: 'Orange', hex: '#FF6D00' },
+  { name: 'Cyan', hex: '#00E5FF' },
 ];
+
+// Beautiful, highly realistic colourful background from Unsplash
+const BACKGROUND_URL = 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?q=80&w=2000&auto=format&fit=crop';
 
 let entityIdCounter = 0;
 
 export default function App() {
+  const [gameState, setGameState] = useState('HOME');
+  const [player, setPlayer] = useState({ name: '', dob: '' });
+  const [leaderboard, setLeaderboard] = useState([]);
+
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [level, setLevel] = useState(1);
   const [targetsHit, setTargetsHit] = useState(0);
 
@@ -31,21 +38,34 @@ export default function App() {
   const [soundAngry, setSoundAngry] = useState();
   const [soundWrong, setSoundWrong] = useState();
 
-  // Load sounds on mount
   useEffect(() => {
-    async function loadSounds() {
+    async function init() {
       try {
         const { sound: p } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/pop.ogg' });
         const { sound: m } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg' });
         const { sound: a } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/woodpecker.ogg' });
-        const { sound: w } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/slip.ogg' }); // wrong balloon
+        const { sound: w } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/slip.ogg' });
         setSoundPop(p);
         setSoundMiss(m);
         setSoundAngry(a);
         setSoundWrong(w);
       } catch (e) { }
+      
+      try {
+        const data = await AsyncStorage.getItem('neonTapperScores');
+        if (data) {
+          setLeaderboard(JSON.parse(data));
+        } else {
+          const dummy = [
+            { name: 'MasterTapper', score: 150, level: 6 },
+            { name: 'Alex', score: 85, level: 3 },
+          ];
+          setLeaderboard(dummy);
+          await AsyncStorage.setItem('neonTapperScores', JSON.stringify(dummy));
+        }
+      } catch(e) {}
     }
-    loadSounds();
+    init();
     return () => {
       if (soundPop) soundPop.unloadAsync();
       if (soundMiss) soundMiss.unloadAsync();
@@ -56,51 +76,49 @@ export default function App() {
 
   const playSound = async (sound) => {
     if (sound) {
-      try {
-        await sound.replayAsync();
-      } catch (e) {}
+      try { await sound.replayAsync(); } catch (e) {}
     }
   };
 
-  // Main Game Timer
+  const saveScore = async (finalScore, finalLevel) => {
+    try {
+      const pName = player.name.trim() || 'Anonymous';
+      const newEntry = { name: pName, score: finalScore, level: finalLevel, id: Date.now() };
+      const newBoard = [...leaderboard, newEntry].sort((a,b) => b.score - a.score).slice(0, 10);
+      setLeaderboard(newBoard);
+      await AsyncStorage.setItem('neonTapperScores', JSON.stringify(newBoard));
+    } catch(e) {}
+  };
+
   useEffect(() => {
     let timer;
-    if (isPlaying && timeLeft > 0) {
-      timer = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft <= 0 && isPlaying) {
-      endGame();
+    if (gameState === 'PLAYING' && timeLeft > 0) {
+      timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
+    } else if (timeLeft <= 0 && gameState === 'PLAYING') {
+      handleGameOver();
     }
     return () => clearInterval(timer);
-  }, [isPlaying, timeLeft]);
+  }, [gameState, timeLeft]);
 
-  // Spawner loop based on level
   useEffect(() => {
     let timeout;
     const spawnLoop = () => {
-      if (isPlaying) {
+      if (gameState === 'PLAYING') {
         spawnBalloon();
-        
-        // 35% chance to spawn a bird
-        if (Math.random() < 0.35) {
-          spawnBird();
-        }
-        
-        const spawnRate = Math.max(600, 1600 - (level * 100)); // Slowly decreases spawn interval
+        if (Math.random() < 0.35) spawnBird();
+        const spawnRate = Math.max(600, 1600 - (level * 100));
         timeout = setTimeout(spawnLoop, spawnRate);
       }
     };
-    if (isPlaying) {
-      spawnLoop();
-    }
+    if (gameState === 'PLAYING') spawnLoop();
     return () => clearTimeout(timeout);
-  }, [isPlaying, level]);
+  }, [gameState, level]);
 
-  const endGame = () => {
-    setIsPlaying(false);
+  const handleGameOver = () => {
+    setGameState('GAME_OVER');
     setBalloons([]);
     setBirds([]);
+    saveScore(score, level);
   };
 
   const startGame = () => {
@@ -110,32 +128,31 @@ export default function App() {
     setTargetsHit(0);
     setBalloons([]);
     setBirds([]);
-    setIsPlaying(true);
+    setGameState('PLAYING');
+  };
+
+  const nextLevel = () => {
+    setLevel(l => l + 1);
+    setTimeLeft(t => t + 5);
+    setTargetsHit(0);
+    setBalloons([]);
+    setBirds([]);
+    setGameState('PLAYING');
   };
 
   const targetColorObj = LEVEL_COLORS[(level - 1) % LEVEL_COLORS.length];
 
   const spawnBalloon = () => {
     entityIdCounter++;
-    
-    // 60% chance to spawn the correct color, 40% chance for a random wrong color (decoy)
     let colorObj = targetColorObj;
     const isDecoy = Math.random() > 0.6;
     if (isDecoy) {
       const wrongColors = LEVEL_COLORS.filter(c => c.hex !== targetColorObj.hex);
       colorObj = wrongColors[Math.floor(Math.random() * wrongColors.length)];
     }
-
-    const currentSpeed = Math.max(2000, 4500 - (level * 250)); // Speed slowly increases with level
-    const currentSize = Math.max(35, 75 - (level * 4)); // Shrinks by 4px per level
-
-    const newBalloon = { 
-      id: entityIdCounter, 
-      color: colorObj.hex, 
-      isTarget: colorObj.hex === targetColorObj.hex,
-      duration: currentSpeed,
-      size: currentSize
-    };
+    const currentSpeed = Math.max(2000, 4500 - (level * 250));
+    const currentSize = Math.max(45, 85 - (level * 4)); // Slightly larger base size to show 3D details
+    const newBalloon = { id: entityIdCounter, color: colorObj.hex, isTarget: colorObj.hex === targetColorObj.hex, duration: currentSpeed, size: currentSize };
     setBalloons(prev => [...prev, newBalloon]);
   };
 
@@ -146,91 +163,115 @@ export default function App() {
     setBirds(prev => [...prev, newBird]);
   };
 
-  const removeBalloon = useCallback((id) => {
-    setBalloons(prev => prev.filter(b => b.id !== id));
-  }, []);
-
-  const removeBird = useCallback((id) => {
-    setBirds(prev => prev.filter(b => b.id !== id));
-  }, []);
+  const removeBalloon = useCallback((id) => setBalloons(prev => prev.filter(b => b.id !== id)), []);
+  const removeBird = useCallback((id) => setBirds(prev => prev.filter(b => b.id !== id)), []);
 
   const handleHitBalloon = useCallback((id, isTarget) => {
+    if (gameState !== 'PLAYING') return;
     if (isTarget) {
       playSound(soundPop);
       setScore(s => s + 5);
-      setTimeLeft(t => t + 1); // +1 second
+      setTimeLeft(t => t + 1);
       
       setTargetsHit(prev => {
         const newHits = prev + 1;
         if (newHits >= 10) {
-          setLevel(l => l + 1);
-          setTimeLeft(t => t + 5);
+          setGameState('LEVEL_COMPLETE');
+          setBalloons([]);
+          setBirds([]);
           return 0;
         }
         return newHits;
       });
     } else {
-      // Hit a decoy balloon!
       playSound(soundWrong);
       setScore(s => s - 5);
-      setTimeLeft(t => t - 2); // Penalize time
+      setTimeLeft(t => t - 2);
     }
-  }, [soundPop, soundWrong]);
+  }, [soundPop, soundWrong, gameState]);
 
   const handleHitBird = useCallback((id) => {
+    if (gameState !== 'PLAYING') return;
     playSound(soundAngry);
     setScore(s => s - 10);
     setTimeLeft(t => t - 5);
-  }, [soundAngry]);
+  }, [soundAngry, gameState]);
 
   const handleMiss = () => {
-    if (isPlaying) {
+    if (gameState === 'PLAYING') {
       playSound(soundMiss);
       setScore(s => s - 2);
     }
   };
 
   return (
-    <View style={styles.container} onStartShouldSetResponder={() => true} onResponderGrant={handleMiss}>
-      <Text style={styles.title}>Level {level}</Text>
+    <ImageBackground source={{ uri: BACKGROUND_URL }} style={styles.container} onStartShouldSetResponder={() => gameState === 'PLAYING'} onResponderGrant={handleMiss}>
+      {/* Dark overlay to make neon game elements pop against realistic background */}
+      <View style={styles.darkOverlay} />
       
-      {!isPlaying && timeLeft === 30 && (
-        <View style={styles.menuBox}>
-          <Text style={styles.instructions}>
-            🎈 Pop 10 <Text style={{color: targetColorObj.hex, fontWeight:'bold'}}>{targetColorObj.name}</Text> balloons!{'\n'}
-            ❌ Do NOT hit other colors! (-5 pts){'\n'}
-            🦅 Avoid the birds! (-10 pts){'\n'}
-          </Text>
+      {/* ---------------- HOME SCREEN ---------------- */}
+      {gameState === 'HOME' && (
+        <View style={styles.homeBox}>
+          <Text selectable={false} style={styles.title}>Neon Tapper</Text>
+          <Text selectable={false} style={styles.subtitle}>Log in to play!</Text>
+          
+          <TextInput 
+            style={styles.input} 
+            placeholder="Player Name" 
+            placeholderTextColor="#BBB"
+            value={player.name}
+            onChangeText={t => setPlayer({...player, name: t})}
+          />
+          <TextInput 
+            style={styles.input} 
+            placeholder="Date of Birth (e.g. 01/01/2000)" 
+            placeholderTextColor="#BBB"
+            value={player.dob}
+            onChangeText={t => setPlayer({...player, dob: t})}
+          />
+
+          <View style={styles.btnRow}>
+            <View 
+              style={[styles.startButton, { opacity: player.name.trim() ? 1 : 0.5 }]} 
+              onStartShouldSetResponder={() => true} 
+              onResponderGrant={() => { if (player.name.trim()) startGame(); }}
+            >
+              <Text selectable={false} style={styles.startButtonText}>START GAME</Text>
+            </View>
+          </View>
+
+          <View style={styles.leaderboardBox}>
+            <Text selectable={false} style={styles.leaderboardTitle}>🏆 Global Scores 🏆</Text>
+            <ScrollView style={{maxHeight: 200, width: '100%'}}>
+              {leaderboard.map((lb, idx) => (
+                <View key={idx} style={styles.lbRow}>
+                  <Text selectable={false} style={styles.lbName}>{idx + 1}. {lb.name}</Text>
+                  <Text selectable={false} style={styles.lbScore}>Score: {lb.score}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
         </View>
       )}
 
-      {isPlaying && (
-        <View style={styles.targetBanner}>
-          <Text style={styles.targetText}>
-            POP ONLY: <Text style={{ color: targetColorObj.hex, fontWeight: '900', fontSize: 24 }}>{targetColorObj.name.toUpperCase()}</Text>
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.stats}>
-        <Text style={styles.score}>Score: {score}</Text>
-        <Text style={styles.hits}>Popped: {targetsHit}/10</Text>
-        <Text style={styles.timer}>Time: {timeLeft}s</Text>
-      </View>
-
-      {isPlaying && (
+      {/* ---------------- PLAYING SCREEN ---------------- */}
+      {gameState === 'PLAYING' && (
         <>
+          <Text selectable={false} style={styles.playingTitle}>Level {level}</Text>
+          <View style={styles.targetBanner}>
+            <Text selectable={false} style={styles.targetText}>
+              POP ONLY: <Text selectable={false} style={{ color: targetColorObj.hex, fontWeight: '900', fontSize: 24 }}>{targetColorObj.name.toUpperCase()}</Text>
+            </Text>
+          </View>
+
+          <View style={styles.stats}>
+            <Text selectable={false} style={styles.score}>Score: {score}</Text>
+            <Text selectable={false} style={styles.hits}>Popped: {targetsHit}/10</Text>
+            <Text selectable={false} style={styles.timer}>Time: {timeLeft}s</Text>
+          </View>
+
           {balloons.map(b => (
-            <Balloon 
-              key={b.id} 
-              id={b.id} 
-              color={b.color} 
-              isTarget={b.isTarget}
-              duration={b.duration} 
-              size={b.size}
-              onHit={handleHitBalloon} 
-              onEscape={removeBalloon} 
-            />
+            <Balloon key={b.id} id={b.id} color={b.color} isTarget={b.isTarget} duration={b.duration} size={b.size} onHit={handleHitBalloon} onEscape={removeBalloon} />
           ))}
           {birds.map(b => (
             <Bird key={b.id} id={b.id} speed={b.speed} onHit={handleHitBird} onEscape={removeBird} />
@@ -238,25 +279,85 @@ export default function App() {
         </>
       )}
 
-      {!isPlaying && timeLeft <= 0 ? (
-        <View style={styles.menuBox}>
-          <Text style={styles.gameOver}>Game Over!</Text>
-          <Text style={styles.finalScore}>Final Score: {score}</Text>
-          <Text style={styles.finalLevel}>Reached Level: {level}</Text>
-          <View style={styles.startButton} onStartShouldSetResponder={() => true} onResponderGrant={startGame}>
-            <Text style={styles.startButtonText}>Try Again</Text>
+      {/* ---------------- LEVEL COMPLETE SCREEN ---------------- */}
+      {gameState === 'LEVEL_COMPLETE' && (
+        <View style={styles.overlayBox}>
+          <CelebrationBanner />
+          <Text selectable={false} style={styles.overlayTitle}>Level {level} Complete!</Text>
+          <Text selectable={false} style={styles.overlayScore}>Current Score: {score}</Text>
+          
+          <View style={styles.btnRow}>
+            <View style={styles.primaryButton} onStartShouldSetResponder={() => true} onResponderGrant={nextLevel}>
+              <Text selectable={false} style={styles.startButtonText}>Next Level</Text>
+            </View>
+            <View style={styles.secondaryButton} onStartShouldSetResponder={() => true} onResponderGrant={() => setGameState('HOME')}>
+              <Text selectable={false} style={styles.startButtonText}>Home</Text>
+            </View>
           </View>
         </View>
-      ) : (!isPlaying && (
-        <View style={styles.startButton} onStartShouldSetResponder={() => true} onResponderGrant={startGame}>
-          <Text style={styles.startButtonText}>Start Game</Text>
+      )}
+
+      {/* ---------------- GAME OVER SCREEN ---------------- */}
+      {gameState === 'GAME_OVER' && (
+        <View style={styles.overlayBox}>
+          <SadDucky />
+          <Text selectable={false} style={styles.gameOverTitle}>Game Over!</Text>
+          <Text selectable={false} style={styles.overlayScore}>Final Score: {score}</Text>
+          <Text selectable={false} style={styles.overlaySubtitle}>Reached Level: {level}</Text>
+          
+          <View style={styles.btnRow}>
+            <View style={styles.primaryButton} onStartShouldSetResponder={() => true} onResponderGrant={startGame}>
+              <Text selectable={false} style={styles.startButtonText}>Try Again</Text>
+            </View>
+            <View style={styles.secondaryButton} onStartShouldSetResponder={() => true} onResponderGrant={() => setGameState('HOME')}>
+              <Text selectable={false} style={styles.startButtonText}>Home</Text>
+            </View>
+          </View>
         </View>
-      ))}
-    </View>
+      )}
+
+    </ImageBackground>
   );
 }
 
-// Separate Balloon Component
+// ---------------- ANIMATED COMPONENTS ----------------
+
+const CelebrationBanner = () => {
+  const scale = useRef(new Animated.Value(0.5)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.2, duration: 500, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 0.8, duration: 500, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return (
+    <Animated.View style={{ transform: [{ scale }], flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+      <Text selectable={false} style={{ fontSize: 50 }}>🎉</Text>
+      <Text selectable={false} style={{ fontSize: 50 }}>🎈</Text>
+      <Text selectable={false} style={{ fontSize: 50 }}>🌟</Text>
+    </Animated.View>
+  );
+};
+
+const SadDucky = () => {
+  const translateY = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(translateY, { toValue: -15, duration: 800, useNativeDriver: true }),
+        Animated.timing(translateY, { toValue: 0, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return (
+    <Animated.View style={{ transform: [{ translateY }], marginBottom: 20 }}>
+      <Text selectable={false} style={{ fontSize: 70 }}>🦆😿</Text>
+    </Animated.View>
+  );
+};
+
 const Balloon = React.memo(({ id, color, isTarget, duration, size, onHit, onEscape }) => {
   const yAnim = useRef(new Animated.Value(height)).current;
   const xPos = useRef(Math.random() * (width - size - 40) + 20).current;
@@ -264,16 +365,10 @@ const Balloon = React.memo(({ id, color, isTarget, duration, size, onHit, onEsca
   const isDead = useRef(false);
 
   useEffect(() => {
-    Animated.timing(yAnim, {
-      toValue: -150,
-      duration: duration,
-      easing: Easing.linear,
-      useNativeDriver: false,
-    }).start(({ finished }) => {
-      if (finished && !isDead.current) {
-        onEscape(id);
-      }
-    });
+    Animated.timing(yAnim, { toValue: -150, duration: duration, easing: Easing.linear, useNativeDriver: false })
+      .start(({ finished }) => {
+        if (finished && !isDead.current) onEscape(id);
+      });
   }, [duration, id, onEscape, yAnim]);
 
   const handlePress = (e) => {
@@ -283,23 +378,18 @@ const Balloon = React.memo(({ id, color, isTarget, duration, size, onHit, onEsca
     setIsExploding(true);
     yAnim.stopAnimation();
     onHit(id, isTarget);
-    
-    setTimeout(() => {
-      onEscape(id);
-    }, 200);
+    setTimeout(() => onEscape(id), 200);
   };
 
   return (
-    <Animated.View 
-      style={[styles.entityWrapper, { top: yAnim, left: xPos }]}
-      onStartShouldSetResponder={() => true}
-      onResponderGrant={handlePress}
-    >
+    <Animated.View style={[styles.entityWrapper, { top: yAnim, left: xPos }]} onStartShouldSetResponder={() => true} onResponderGrant={handlePress}>
       <View style={styles.hitArea}>
         {isExploding ? (
-          <Text style={{ fontSize: size }}>{isTarget ? '💥' : '❌'}</Text>
+          <Text selectable={false} style={{ fontSize: size }}>{isTarget ? '💥' : '❌'}</Text>
         ) : (
           <View style={[styles.balloonBase, { backgroundColor: color, width: size, height: size * 1.2, borderRadius: size / 2 }]}>
+            {/* Specular highlight for a 3D bubble effect */}
+            <View style={styles.balloonHighlight} />
             <View style={[styles.knotBase, { borderBottomColor: color, left: size / 2 - 5 }]} />
           </View>
         )}
@@ -308,7 +398,6 @@ const Balloon = React.memo(({ id, color, isTarget, duration, size, onHit, onEsca
   );
 });
 
-// Separate Bird Component
 const Bird = React.memo(({ id, speed, onHit, onEscape }) => {
   const direction = useRef(Math.random() > 0.5 ? 1 : -1).current; 
   const xAnim = useRef(new Animated.Value(direction === 1 ? -100 : width + 100)).current;
@@ -317,16 +406,10 @@ const Bird = React.memo(({ id, speed, onHit, onEscape }) => {
   const isDead = useRef(false);
 
   useEffect(() => {
-    Animated.timing(xAnim, {
-      toValue: direction === 1 ? width + 100 : -100,
-      duration: speed,
-      easing: Easing.linear,
-      useNativeDriver: false,
-    }).start(({ finished }) => {
-      if (finished && !isDead.current) {
-        onEscape(id);
-      }
-    });
+    Animated.timing(xAnim, { toValue: direction === 1 ? width + 100 : -100, duration: speed, easing: Easing.linear, useNativeDriver: false })
+      .start(({ finished }) => {
+        if (finished && !isDead.current) onEscape(id);
+      });
   }, [direction, id, onEscape, speed, xAnim]);
 
   const handlePress = (e) => {
@@ -336,140 +419,198 @@ const Bird = React.memo(({ id, speed, onHit, onEscape }) => {
     setIsAngry(true);
     xAnim.stopAnimation();
     onHit(id);
-    setTimeout(() => {
-      onEscape(id);
-    }, 800);
+    setTimeout(() => onEscape(id), 800);
   };
 
   return (
-    <Animated.View 
-      style={[styles.entityWrapper, { top: yPos, left: xAnim }]}
-      onStartShouldSetResponder={() => true}
-      onResponderGrant={handlePress}
-    >
+    <Animated.View style={[styles.entityWrapper, { top: yPos, left: xAnim }]} onStartShouldSetResponder={() => true} onResponderGrant={handlePress}>
       <View style={styles.hitArea}>
-        <Text style={styles.birdEmoji}>{isAngry ? '🤬' : '🦅'}</Text>
+        {/* Adds heavy text shadow to simulate 3D depth on the emoji */}
+        <Text selectable={false} style={[styles.birdEmoji, { transform: [{ scaleX: direction === 1 ? -1 : 1 }] }]}>
+          {isAngry ? '🤬' : '🦅'}
+        </Text>
       </View>
     </Animated.View>
   );
 });
 
+// ---------------- STYLES ----------------
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1E1E2E', // Dark mode!
     alignItems: 'center',
     paddingTop: 60,
     overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  darkOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)', // Darkens background so neon elements pop
+  },
+  homeBox: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    zIndex: 10,
   },
   title: {
+    fontSize: 54,
+    fontWeight: '900',
+    color: '#00E676',
+    marginBottom: 10,
+    textShadowColor: '#00E676',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 15,
+  },
+  playingTitle: {
     fontSize: 36,
     fontWeight: '900',
-    color: '#FFFFFF',
-    marginBottom: 5,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 1, height: 2 },
-    textShadowRadius: 4,
-  },
-  targetBanner: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingVertical: 5,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    marginBottom: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  targetText: {
-    fontSize: 16,
     color: '#FFF',
-    fontWeight: 'bold',
+    marginBottom: 5,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowRadius: 10,
   },
-  menuBox: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    padding: 25,
+  subtitle: {
+    fontSize: 20,
+    color: '#FFF',
+    marginBottom: 30,
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowRadius: 5,
+  },
+  input: {
+    width: '85%',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    color: '#FFF',
+    padding: 15,
     borderRadius: 15,
-    marginTop: 20,
+    marginBottom: 15,
+    fontSize: 16,
+    borderWidth: 2,
+    borderColor: '#00E676',
+    shadowColor: '#00E676',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+  },
+  leaderboardBox: {
+    marginTop: 40,
+    width: '90%',
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#448AFF',
     alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    zIndex: 100,
+    shadowColor: '#448AFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
   },
-  instructions: {
-    fontSize: 18,
-    color: '#333',
-    textAlign: 'center',
-    lineHeight: 32,
+  leaderboardTitle: {
+    fontSize: 24,
+    color: '#FFD740',
     fontWeight: 'bold',
+    marginBottom: 15,
+    textShadowColor: '#FFD740',
+    textShadowRadius: 10,
   },
+  lbRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.2)',
+  },
+  lbName: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  lbScore: { color: '#00E676', fontSize: 18, fontWeight: '900' },
+  
+  targetBanner: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingVertical: 8,
+    paddingHorizontal: 25,
+    borderRadius: 25,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  targetText: { fontSize: 18, color: '#FFF', fontWeight: 'bold' },
   stats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '95%',
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.8)',
     padding: 15,
     borderRadius: 15,
     marginTop: 5,
     zIndex: 10,
-    borderWidth: 1,
-    borderColor: '#444',
+    borderWidth: 2,
+    borderColor: '#333',
+    elevation: 10,
   },
-  score: { fontSize: 18, color: '#00E676', fontWeight: 'bold' },
-  hits: { fontSize: 18, color: '#FFD740', fontWeight: 'bold' },
-  timer: { fontSize: 18, color: '#FF5252', fontWeight: 'bold' },
+  score: { fontSize: 20, color: '#00E676', fontWeight: '900' },
+  hits: { fontSize: 20, color: '#FFD740', fontWeight: '900' },
+  timer: { fontSize: 20, color: '#FF5252', fontWeight: '900' },
   
-  entityWrapper: {
-    position: 'absolute',
-    zIndex: 5,
-  },
-  hitArea: {
-    padding: 30,
-    alignItems: 'center',
+  overlayBox: {
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    padding: 20,
   },
-  balloonBase: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.5,
-    shadowRadius: 5,
-    elevation: 8,
+  overlayTitle: { fontSize: 42, color: '#FFD740', fontWeight: '900', marginBottom: 15, textAlign: 'center', textShadowColor: '#FFD740', textShadowRadius: 15 },
+  gameOverTitle: { fontSize: 54, color: '#FF5252', fontWeight: '900', marginBottom: 15, textAlign: 'center', textShadowColor: '#FF5252', textShadowRadius: 20 },
+  overlayScore: { fontSize: 30, color: '#FFF', fontWeight: 'bold', marginBottom: 10 },
+  overlaySubtitle: { fontSize: 22, color: '#A0A0B0', marginBottom: 30 },
+  
+  btnRow: {
+    flexDirection: 'row',
+    gap: 15,
+    marginTop: 20,
   },
-  knotBase: {
+  startButton: { backgroundColor: '#00E676', paddingVertical: 18, paddingHorizontal: 45, borderRadius: 30, elevation: 10, shadowColor: '#00E676', shadowOpacity: 0.6, shadowRadius: 15, shadowOffset: {width: 0, height: 0} },
+  primaryButton: { backgroundColor: '#448AFF', paddingVertical: 18, paddingHorizontal: 35, borderRadius: 30, elevation: 10, shadowColor: '#448AFF', shadowOpacity: 0.6, shadowRadius: 15, shadowOffset: {width: 0, height: 0} },
+  secondaryButton: { backgroundColor: '#555', paddingVertical: 18, paddingHorizontal: 35, borderRadius: 30, elevation: 5 },
+  startButtonText: { fontSize: 20, color: '#FFFFFF', fontWeight: '900', textTransform: 'uppercase' },
+
+  entityWrapper: { position: 'absolute', zIndex: 5 },
+  hitArea: { 
+    padding: 30, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    userSelect: 'none', // Prevents Google text selection!
+  },
+  balloonBase: { 
+    shadowColor: '#000', 
+    shadowOffset: { width: 5, height: 10 }, 
+    shadowOpacity: 0.7, 
+    shadowRadius: 10, 
+    elevation: 15, // Android heavy 3D shadow
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)', // Rim light
+  },
+  balloonHighlight: {
     position: 'absolute',
-    bottom: -8,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 5,
-    borderRightWidth: 5,
-    borderBottomWidth: 10,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
+    top: '12%',
+    left: '20%',
+    width: '35%',
+    height: '25%',
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderRadius: 50,
+    transform: [{ rotate: '-45deg' }],
   },
-  birdEmoji: {
-    fontSize: 50,
+  knotBase: { position: 'absolute', bottom: -10, width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 10, borderLeftColor: 'transparent', borderRightColor: 'transparent', zIndex: -1 },
+  birdEmoji: { 
+    fontSize: 55, 
+    textShadowColor: 'rgba(0,0,0,0.8)', 
+    textShadowOffset: { width: 3, height: 6 }, 
+    textShadowRadius: 5,
+    userSelect: 'none',
   },
-  startButton: {
-    marginTop: 30,
-    backgroundColor: '#6200EA',
-    paddingVertical: 18,
-    paddingHorizontal: 50,
-    borderRadius: 30,
-    shadowColor: '#6200EA',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 6,
-    zIndex: 20,
-  },
-  startButtonText: {
-    fontSize: 22,
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  gameOver: { fontSize: 32, color: '#FF5252', fontWeight: 'bold', marginBottom: 10 },
-  finalScore: { fontSize: 24, color: '#333', fontWeight: 'bold' },
-  finalLevel: { fontSize: 20, color: '#666', marginTop: 10 },
 });
