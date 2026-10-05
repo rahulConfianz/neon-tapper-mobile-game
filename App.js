@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, Text, View, TouchableWithoutFeedback, Pressable, Dimensions, Animated, Easing } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, TouchableWithoutFeedback, Pressable, Dimensions, Animated, Easing } from 'react-native';
 import { Audio } from 'expo-av';
 
 const { width, height } = Dimensions.get('window');
