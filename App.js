@@ -1,105 +1,247 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Pressable, Dimensions } from 'react-native';
+import { Audio } from 'expo-av';
 
 const { width, height } = Dimensions.get('window');
+const BALLOON_SIZE = 60;
+const BIRD_SIZE = 50;
 
-// Increased difficulty: smaller target
-const TARGET_SIZE = 45; 
+const LEVEL_COLORS = [
+  '#FF5252', // Level 1 - Red
+  '#448AFF', // Level 2 - Blue
+  '#69F0AE', // Level 3 - Green
+  '#E040FB', // Level 4 - Purple
+  '#FFD740', // Level 5 - Yellow
+  '#FF6E40', // Level 6 - Orange
+  '#18FFFF', // Level 7 - Cyan
+];
 
 export default function App() {
   const [score, setScore] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(15);
+  const [timeLeft, setTimeLeft] = useState(20);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [targetPosition, setTargetPosition] = useState({ top: height / 2 - TARGET_SIZE/2, left: width / 2 - TARGET_SIZE/2 });
-  const [targetColor, setTargetColor] = useState('#00E676'); // Neon green
+  const [level, setLevel] = useState(1);
+  const [targetsHit, setTargetsHit] = useState(0);
 
+  const [balloonPos, setBalloonPos] = useState({ top: height / 2, left: width / 2 });
+  const [isExploding, setIsExploding] = useState(false);
+  
+  const [birdPos, setBirdPos] = useState({ top: height / 3, left: -100 });
+  const [isBirdActive, setIsBirdActive] = useState(false);
+  const [birdAngry, setBirdAngry] = useState(false);
+
+  // Audio Objects
+  const [soundPop, setSoundPop] = useState();
+  const [soundMiss, setSoundMiss] = useState();
+  const [soundAngry, setSoundAngry] = useState();
+
+  // Load sounds on mount
+  useEffect(() => {
+    async function loadSounds() {
+      try {
+        const { sound: p } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/pop.ogg' });
+        const { sound: m } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg' });
+        const { sound: a } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/woodpecker.ogg' });
+        setSoundPop(p);
+        setSoundMiss(m);
+        setSoundAngry(a);
+      } catch (e) {
+        console.warn("Could not load sounds", e);
+      }
+    }
+    loadSounds();
+    return () => {
+      if (soundPop) soundPop.unloadAsync();
+      if (soundMiss) soundMiss.unloadAsync();
+      if (soundAngry) soundAngry.unloadAsync();
+    };
+  }, []);
+
+  const playSound = async (sound) => {
+    if (sound) {
+      try {
+        await sound.replayAsync();
+      } catch (e) {
+        // Ignore playback errors
+      }
+    }
+  };
+
+  // Main Game Timer
   useEffect(() => {
     let timer;
     if (isPlaying && timeLeft > 0) {
       timer = setInterval(() => {
         setTimeLeft((prev) => prev - 1);
       }, 1000);
-    } else if (timeLeft === 0) {
+    } else if (timeLeft <= 0 && isPlaying) {
       setIsPlaying(false);
     }
     return () => clearInterval(timer);
   }, [isPlaying, timeLeft]);
 
+  // Balloon auto-move timer (moves if you are too slow)
+  useEffect(() => {
+    let moveTimer;
+    if (isPlaying && !isExploding) {
+      // Moves faster as level increases
+      const speed = Math.max(700, 2500 - (level * 250)); 
+      moveTimer = setInterval(() => {
+        moveBalloon();
+      }, speed);
+    }
+    return () => clearInterval(moveTimer);
+  }, [isPlaying, level, isExploding]);
+
+  // Bird auto-spawn timer
+  useEffect(() => {
+    let birdTimer;
+    if (isPlaying) {
+      birdTimer = setInterval(() => {
+        // Spawn bird randomly if not active
+        if (!isBirdActive && Math.random() > 0.4) {
+          spawnBird();
+        } else if (isBirdActive) {
+          // Bird flies away
+          setIsBirdActive(false);
+        }
+      }, 2500);
+    }
+    return () => clearInterval(birdTimer);
+  }, [isPlaying, isBirdActive]);
+
   const startGame = () => {
     setScore(0);
-    setTimeLeft(15);
+    setTimeLeft(20);
+    setLevel(1);
+    setTargetsHit(0);
     setIsPlaying(true);
-    moveTarget();
+    setIsBirdActive(false);
+    moveBalloon();
   };
 
-  const moveTarget = () => {
-    // Keep target within safe screen bounds
-    const newTop = Math.random() * (height - 300) + 120; // Safe area
-    const newLeft = Math.random() * (width - TARGET_SIZE - 20) + 10;
-    
-    // Change color randomly for fun each tap!
-    const colors = ['#00E676', '#E040FB', '#00E5FF', '#FFEA00'];
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    
-    setTargetPosition({ top: newTop, left: newLeft });
-    setTargetColor(randomColor);
+  const moveBalloon = () => {
+    const newTop = Math.random() * (height - 300) + 120;
+    const newLeft = Math.random() * (width - BALLOON_SIZE - 20) + 10;
+    setBalloonPos({ top: newTop, left: newLeft });
   };
 
-  const handleTapTarget = () => {
-    if (isPlaying) {
-      setScore((prev) => prev + 2); // 2 points for a hit
-      moveTarget();
+  const spawnBird = () => {
+    const newTop = Math.random() * (height - 300) + 120;
+    const newLeft = Math.random() * (width - BIRD_SIZE - 20) + 10;
+    setBirdPos({ top: newTop, left: newLeft });
+    setIsBirdActive(true);
+    setBirdAngry(false);
+  };
+
+  const handleHitBalloon = () => {
+    if (!isPlaying || isExploding) return;
+    
+    playSound(soundPop);
+    setIsExploding(true);
+    setScore(s => s + 5);
+    setTimeLeft(t => t + 1); // +1 second reward!
+    
+    const newHits = targetsHit + 1;
+    if (newHits >= 10) {
+      // Level Up!
+      setLevel(l => l + 1);
+      setTargetsHit(0);
+      setTimeLeft(t => t + 5); // bonus time for next level
+    } else {
+      setTargetsHit(newHits);
     }
+
+    setTimeout(() => {
+      setIsExploding(false);
+      moveBalloon();
+    }, 200); // 200ms explosion effect
+  };
+
+  const handleHitBird = () => {
+    if (!isPlaying || !isBirdActive || birdAngry) return;
+    
+    playSound(soundAngry);
+    setBirdAngry(true);
+    setScore(s => s - 10); // Negative points penalty!
+    
+    setTimeout(() => {
+      setIsBirdActive(false);
+      setBirdAngry(false);
+    }, 800); // Show angry emoji for a moment
   };
 
   const handleMiss = () => {
     if (isPlaying) {
-      // Penalty: lose 1 point when tapping the background!
-      setScore((prev) => prev - 1);
+      playSound(soundMiss);
+      setScore(s => s - 2); // Miss penalty
     }
   };
 
+  const currentColor = LEVEL_COLORS[(level - 1) % LEVEL_COLORS.length];
+
   return (
     <Pressable style={styles.container} onPress={handleMiss}>
-      <Text style={styles.title}>Neon Tapper</Text>
+      <Text style={styles.title}>Level {level}</Text>
       
-      {!isPlaying && timeLeft === 15 && (
-        <Text style={styles.instructions}>
-          Tap the glowing square as fast as you can. {'\n\n'}
-          <Text style={{color: '#00E676', fontWeight: 'bold'}}>+2 points for a hit</Text>{'\n'}
-          <Text style={{color: '#FF5252', fontWeight: 'bold'}}>-1 point for a miss!</Text>
-        </Text>
+      {!isPlaying && timeLeft === 20 && (
+        <View style={styles.menuBox}>
+          <Text style={styles.instructions}>
+            🎈 Pop 10 balloons to advance! (+1 sec){'\n'}
+            🦅 Avoid the birds! (-10 pts){'\n'}
+            ❌ Don't miss! (-2 pts)
+          </Text>
+        </View>
       )}
 
       <View style={styles.stats}>
         <Text style={styles.score}>Score: {score}</Text>
+        <Text style={styles.hits}>Popped: {targetsHit}/10</Text>
         <Text style={styles.timer}>Time: {timeLeft}s</Text>
       </View>
 
       {isPlaying ? (
-        <TouchableOpacity
-          style={[
-            styles.target, 
-            { 
-              top: targetPosition.top, 
-              left: targetPosition.left, 
-              backgroundColor: targetColor,
-              shadowColor: targetColor
-            }
-          ]}
-          onPress={handleTapTarget}
-          activeOpacity={0.6}
-        />
+        <>
+          {/* BALLOON */}
+          <TouchableOpacity
+            style={[styles.balloonContainer, { top: balloonPos.top, left: balloonPos.left }]}
+            onPress={handleHitBalloon}
+            activeOpacity={1}
+          >
+            {isExploding ? (
+              <Text style={styles.explosion}>💥</Text>
+            ) : (
+              <View style={[styles.balloon, { backgroundColor: currentColor }]}>
+                <View style={[styles.knot, { borderBottomColor: currentColor }]} />
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* BIRD */}
+          {isBirdActive && (
+            <TouchableOpacity
+              style={[styles.birdContainer, { top: birdPos.top, left: birdPos.left }]}
+              onPress={handleHitBird}
+              activeOpacity={1}
+            >
+              <Text style={styles.birdEmoji}>{birdAngry ? '🤬' : '🦅'}</Text>
+            </TouchableOpacity>
+          )}
+        </>
       ) : (
         <TouchableOpacity style={styles.startButton} onPress={startGame}>
           <Text style={styles.startButtonText}>
-            {timeLeft === 0 ? 'Play Again' : 'Start Game'}
+            {timeLeft <= 0 ? 'Try Again' : 'Start Game'}
           </Text>
         </TouchableOpacity>
       )}
 
-      {!isPlaying && timeLeft === 0 && (
-        <Text style={styles.gameOver}>Game Over! Final Score: {score}</Text>
+      {!isPlaying && timeLeft <= 0 && (
+        <View style={styles.menuBox}>
+          <Text style={styles.gameOver}>Game Over!</Text>
+          <Text style={styles.finalScore}>Final Score: {score}</Text>
+          <Text style={styles.finalLevel}>Reached Level: {level}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -108,65 +250,101 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0F1A', // Darker background
+    backgroundColor: '#87CEEB', // Sky blue background
     alignItems: 'center',
     paddingTop: 80,
   },
   title: {
-    fontSize: 34,
+    fontSize: 36,
     fontWeight: '900',
     color: '#FFFFFF',
-    marginBottom: 10,
-    letterSpacing: 2,
+    marginBottom: 5,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 1, height: 2 },
+    textShadowRadius: 4,
+  },
+  menuBox: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    padding: 20,
+    borderRadius: 15,
+    marginTop: 20,
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
   },
   instructions: {
-    fontSize: 16,
-    color: '#A0A0B0',
+    fontSize: 18,
+    color: '#333',
     textAlign: 'center',
-    paddingHorizontal: 30,
-    marginBottom: 20,
-    lineHeight: 24,
+    lineHeight: 32,
+    fontWeight: 'bold',
   },
   stats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '85%',
-    marginBottom: 20,
-    backgroundColor: '#1E1E2E',
+    width: '95%',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     padding: 15,
     borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#333344',
+    marginTop: 10,
   },
-  score: {
-    fontSize: 20,
-    color: '#00E676',
-    fontWeight: 'bold',
-  },
-  timer: {
-    fontSize: 20,
-    color: '#FF5252',
-    fontWeight: 'bold',
-  },
-  target: {
+  score: { fontSize: 18, color: '#00E676', fontWeight: 'bold' },
+  hits: { fontSize: 18, color: '#FFD740', fontWeight: 'bold' },
+  timer: { fontSize: 18, color: '#FF5252', fontWeight: 'bold' },
+  
+  balloonContainer: {
     position: 'absolute',
-    width: TARGET_SIZE,
-    height: TARGET_SIZE,
-    borderRadius: 10, // Making it a square now for higher difficulty feel!
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 15,
-    elevation: 10,
+    width: BALLOON_SIZE,
+    height: BALLOON_SIZE + 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  balloon: {
+    width: BALLOON_SIZE,
+    height: BALLOON_SIZE * 1.2,
+    borderRadius: BALLOON_SIZE / 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
+  },
+  knot: {
+    position: 'absolute',
+    bottom: -8,
+    left: BALLOON_SIZE / 2 - 5,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderBottomWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
+  explosion: {
+    fontSize: 60,
+  },
+  birdContainer: {
+    position: 'absolute',
+    width: BIRD_SIZE,
+    height: BIRD_SIZE,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  birdEmoji: {
+    fontSize: 50,
   },
   startButton: {
-    marginTop: 200,
-    backgroundColor: '#6200EA',
+    marginTop: 150,
+    backgroundColor: '#FF5252',
     paddingVertical: 18,
     paddingHorizontal: 50,
     borderRadius: 30,
-    shadowColor: '#6200EA',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
   },
@@ -175,12 +353,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     textTransform: 'uppercase',
-    letterSpacing: 1,
   },
-  gameOver: {
-    marginTop: 50,
-    fontSize: 26,
-    color: '#FFEA00',
-    fontWeight: 'bold',
-  },
+  gameOver: { fontSize: 32, color: '#FF5252', fontWeight: 'bold', marginBottom: 10 },
+  finalScore: { fontSize: 24, color: '#333', fontWeight: 'bold' },
+  finalLevel: { fontSize: 20, color: '#666', marginTop: 10 },
 });
