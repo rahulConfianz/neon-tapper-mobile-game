@@ -180,7 +180,11 @@ export default function App() {
   };
 
   return (
-    <Pressable style={styles.container} onPress={handleMiss}>
+    <View 
+      style={styles.container} 
+      onStartShouldSetResponder={() => true}
+      onResponderGrant={handleMiss}
+    >
       <Text style={styles.title}>Level {level}</Text>
       
       {!isPlaying && timeLeft === 20 && (
@@ -224,7 +228,7 @@ export default function App() {
           <Text style={styles.startButtonText}>Start Game</Text>
         </TouchableOpacity>
       ))}
-    </Pressable>
+    </View>
   );
 }
 
@@ -248,7 +252,8 @@ const Balloon = React.memo(({ id, color, duration, onHit, onEscape }) => {
     });
   }, []);
 
-  const handlePress = () => {
+  const handlePress = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
     if (isDead.current) return;
     isDead.current = true;
     setIsExploding(true);
@@ -261,19 +266,20 @@ const Balloon = React.memo(({ id, color, duration, onHit, onEscape }) => {
   };
 
   return (
-    <Animated.View style={[styles.entityWrapper, { top: yAnim, left: xPos }]}>
-      {/* TouchableWithoutFeedback + hitSlop dramatically improves tap accuracy! */}
-      <TouchableWithoutFeedback onPress={handlePress} hitSlop={{top: 30, bottom: 30, left: 30, right: 30}}>
-        <View style={styles.hitArea}>
-          {isExploding ? (
-            <Text style={styles.explosion}>💥</Text>
-          ) : (
-            <View style={[styles.balloon, { backgroundColor: color }]}>
-              <View style={[styles.knot, { borderBottomColor: color }]} />
-            </View>
-          )}
-        </View>
-      </TouchableWithoutFeedback>
+    <Animated.View 
+      style={[styles.entityWrapper, { top: yAnim, left: xPos }]}
+      onStartShouldSetResponder={() => true}
+      onResponderGrant={handlePress}
+    >
+      <View style={styles.hitArea}>
+        {isExploding ? (
+          <Text style={styles.explosion}>💥</Text>
+        ) : (
+          <View style={[styles.balloon, { backgroundColor: color }]}>
+            <View style={[styles.knot, { borderBottomColor: color }]} />
+          </View>
+        )}
+      </View>
     </Animated.View>
   );
 });
@@ -299,7 +305,8 @@ const Bird = React.memo(({ id, speed, onHit, onEscape }) => {
     });
   }, []);
 
-  const handlePress = () => {
+  const handlePress = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
     if (isDead.current) return;
     isDead.current = true;
     setIsAngry(true);
@@ -311,12 +318,14 @@ const Bird = React.memo(({ id, speed, onHit, onEscape }) => {
   };
 
   return (
-    <Animated.View style={[styles.entityWrapper, { top: yPos, left: xAnim }]}>
-      <TouchableWithoutFeedback onPress={handlePress} hitSlop={{top: 30, bottom: 30, left: 30, right: 30}}>
-        <View style={styles.hitArea}>
-          <Text style={styles.birdEmoji}>{isAngry ? '🤬' : '🦅'}</Text>
-        </View>
-      </TouchableWithoutFeedback>
+    <Animated.View 
+      style={[styles.entityWrapper, { top: yPos, left: xAnim }]}
+      onStartShouldSetResponder={() => true}
+      onResponderGrant={handlePress}
+    >
+      <View style={styles.hitArea}>
+        <Text style={styles.birdEmoji}>{isAngry ? '🤬' : '🦅'}</Text>
+      </View>
     </Animated.View>
   );
 });
@@ -375,7 +384,7 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   hitArea: {
-    padding: 10,
+    padding: 30, // Increased padding replaces hitSlop
     alignItems: 'center',
     justifyContent: 'center',
   },
