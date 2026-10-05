@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Pressable, Dimensions } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, Pressable, Dimensions, Animated, Easing } from 'react-native';
 import { Audio } from 'expo-av';
 
 const { width, height } = Dimensions.get('window');
 const BALLOON_SIZE = 60;
-const BIRD_SIZE = 50;
+const BIRD_SIZE = 60;
 
 const LEVEL_COLORS = [
   '#FF5252', // Level 1 - Red
@@ -23,12 +23,20 @@ export default function App() {
   const [level, setLevel] = useState(1);
   const [targetsHit, setTargetsHit] = useState(0);
 
-  const [balloonPos, setBalloonPos] = useState({ top: height / 2, left: width / 2 });
   const [isExploding, setIsExploding] = useState(false);
-  
-  const [birdPos, setBirdPos] = useState({ top: height / 3, left: -100 });
-  const [isBirdActive, setIsBirdActive] = useState(false);
   const [birdAngry, setBirdAngry] = useState(false);
+  
+  // Animation variables
+  const balloonY = useRef(new Animated.Value(height)).current;
+  const balloonX = useRef(new Animated.Value(width / 2)).current;
+  const balloonDuration = useRef(3500); // initial duration
+
+  const birdX = useRef(new Animated.Value(-BIRD_SIZE)).current;
+  const birdY = useRef(new Animated.Value(height / 3)).current;
+  
+  const balloonAnimRef = useRef(null);
+  const birdAnimRef = useRef(null);
+  const birdTimeoutRef = useRef(null);
 
   // Audio Objects
   const [soundPop, setSoundPop] = useState();
@@ -61,9 +69,7 @@ export default function App() {
     if (sound) {
       try {
         await sound.replayAsync();
-      } catch (e) {
-        // Ignore playback errors
-      }
+      } catch (e) {}
     }
   };
 
@@ -75,63 +81,88 @@ export default function App() {
         setTimeLeft((prev) => prev - 1);
       }, 1000);
     } else if (timeLeft <= 0 && isPlaying) {
-      setIsPlaying(false);
+      endGame();
     }
     return () => clearInterval(timer);
   }, [isPlaying, timeLeft]);
 
-  // Balloon auto-move timer (moves if you are too slow)
-  useEffect(() => {
-    let moveTimer;
-    if (isPlaying && !isExploding) {
-      // Moves faster as level increases
-      const speed = Math.max(700, 2500 - (level * 250)); 
-      moveTimer = setInterval(() => {
-        moveBalloon();
-      }, speed);
-    }
-    return () => clearInterval(moveTimer);
-  }, [isPlaying, level, isExploding]);
-
-  // Bird auto-spawn timer
-  useEffect(() => {
-    let birdTimer;
-    if (isPlaying) {
-      birdTimer = setInterval(() => {
-        // Spawn bird randomly if not active
-        if (!isBirdActive && Math.random() > 0.4) {
-          spawnBird();
-        } else if (isBirdActive) {
-          // Bird flies away
-          setIsBirdActive(false);
-        }
-      }, 2500);
-    }
-    return () => clearInterval(birdTimer);
-  }, [isPlaying, isBirdActive]);
+  const endGame = () => {
+    setIsPlaying(false);
+    if (balloonAnimRef.current) balloonAnimRef.current.stop();
+    if (birdAnimRef.current) birdAnimRef.current.stop();
+    if (birdTimeoutRef.current) clearTimeout(birdTimeoutRef.current);
+  };
 
   const startGame = () => {
     setScore(0);
     setTimeLeft(20);
     setLevel(1);
     setTargetsHit(0);
+    balloonDuration.current = 3500;
     setIsPlaying(true);
-    setIsBirdActive(false);
-    moveBalloon();
+    
+    startBalloon();
+    scheduleNextBird();
   };
 
-  const moveBalloon = () => {
-    const newTop = Math.random() * (height - 300) + 120;
-    const newLeft = Math.random() * (width - BALLOON_SIZE - 20) + 10;
-    setBalloonPos({ top: newTop, left: newLeft });
+  // Balloon Animation Logic
+  const startBalloon = () => {
+    // Random X position between 10 and width-BALLOON_SIZE-10
+    const randomX = Math.random() * (width - BALLOON_SIZE - 20) + 10;
+    balloonX.setValue(randomX);
+    balloonY.setValue(height); // Start at bottom
+    
+    balloonAnimRef.current = Animated.timing(balloonY, {
+      toValue: -BALLOON_SIZE - 50, // Move past top of screen
+      duration: balloonDuration.current,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    });
+    
+    balloonAnimRef.current.start(({ finished }) => {
+      if (finished && isPlaying) {
+        // If it reached the top without being clicked, restart it
+        startBalloon();
+      }
+    });
   };
 
-  const spawnBird = () => {
-    const newTop = Math.random() * (height - 300) + 120;
-    const newLeft = Math.random() * (width - BIRD_SIZE - 20) + 10;
-    setBirdPos({ top: newTop, left: newLeft });
-    setIsBirdActive(true);
+  // Bird Animation Logic
+  const scheduleNextBird = () => {
+    const delay = Math.random() * 2000 + 1000; // 1 to 3 seconds
+    birdTimeoutRef.current = setTimeout(() => {
+      if (isPlaying) {
+        startBird();
+      }
+    }, delay);
+  };
+
+  const startBird = () => {
     setBirdAngry(false);
+    
+    const direction = Math.random() > 0.5 ? 1 : -1; // 1 = left to right, -1 = right to left
+    const startX = direction === 1 ? -BIRD_SIZE : width;
+    const endX = direction === 1 ? width + BIRD_SIZE : -BIRD_SIZE - 50;
+    
+    const randomY = Math.random() * (height - 350) + 100; // Keep in middle area
+    
+    birdX.setValue(startX);
+    birdY.setValue(randomY);
+    
+    const speed = Math.random() * 1500 + 2000; // 2 to 3.5 seconds
+    
+    birdAnimRef.current = Animated.timing(birdX, {
+      toValue: endX,
+      duration: speed,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    });
+    
+    birdAnimRef.current.start(({ finished }) => {
+      if (finished && isPlaying) {
+        scheduleNextBird();
+      }
+    });
   };
 
   const handleHitBalloon = () => {
@@ -139,42 +170,52 @@ export default function App() {
     
     playSound(soundPop);
     setIsExploding(true);
+    if (balloonAnimRef.current) balloonAnimRef.current.stop(); // Stop current animation
+    
     setScore(s => s + 5);
-    setTimeLeft(t => t + 1); // +1 second reward!
+    setTimeLeft(t => t + 1); // +1 second
+    
+    // Increase speed by decreasing duration (minimum 600ms)
+    balloonDuration.current = Math.max(600, balloonDuration.current - 150);
     
     const newHits = targetsHit + 1;
     if (newHits >= 10) {
-      // Level Up!
       setLevel(l => l + 1);
       setTargetsHit(0);
-      setTimeLeft(t => t + 5); // bonus time for next level
+      setTimeLeft(t => t + 5);
     } else {
       setTargetsHit(newHits);
     }
 
+    // Short explosion effect
     setTimeout(() => {
       setIsExploding(false);
-      moveBalloon();
-    }, 200); // 200ms explosion effect
+      startBalloon(); // Spawn new balloon
+    }, 200);
   };
 
   const handleHitBird = () => {
-    if (!isPlaying || !isBirdActive || birdAngry) return;
+    if (!isPlaying || birdAngry) return;
     
     playSound(soundAngry);
     setBirdAngry(true);
-    setScore(s => s - 10); // Negative points penalty!
     
+    if (birdAnimRef.current) birdAnimRef.current.stop(); // Stop bird where it is
+    
+    setScore(s => s - 10);
+    setTimeLeft(t => t - 5); // -5 seconds penalty!
+    
+    // Show angry reaction, then make bird fly away / respawn
     setTimeout(() => {
-      setIsBirdActive(false);
       setBirdAngry(false);
-    }, 800); // Show angry emoji for a moment
+      scheduleNextBird();
+    }, 800);
   };
 
   const handleMiss = () => {
     if (isPlaying) {
       playSound(soundMiss);
-      setScore(s => s - 2); // Miss penalty
+      setScore(s => s - 2);
     }
   };
 
@@ -188,7 +229,7 @@ export default function App() {
         <View style={styles.menuBox}>
           <Text style={styles.instructions}>
             🎈 Pop 10 balloons to advance! (+1 sec){'\n'}
-            🦅 Avoid the birds! (-10 pts){'\n'}
+            🦅 Avoid the birds! (-10 pts & -5 sec){'\n'}
             ❌ Don't miss! (-2 pts)
           </Text>
         </View>
@@ -202,31 +243,25 @@ export default function App() {
 
       {isPlaying ? (
         <>
-          {/* BALLOON */}
-          <TouchableOpacity
-            style={[styles.balloonContainer, { top: balloonPos.top, left: balloonPos.left }]}
-            onPress={handleHitBalloon}
-            activeOpacity={1}
-          >
-            {isExploding ? (
-              <Text style={styles.explosion}>💥</Text>
-            ) : (
-              <View style={[styles.balloon, { backgroundColor: currentColor }]}>
-                <View style={[styles.knot, { borderBottomColor: currentColor }]} />
-              </View>
-            )}
-          </TouchableOpacity>
+          {/* ANIMATED BALLOON */}
+          <Animated.View style={[styles.balloonWrapper, { top: balloonY, left: balloonX }]}>
+            <TouchableOpacity onPress={handleHitBalloon} activeOpacity={1}>
+              {isExploding ? (
+                <Text style={styles.explosion}>💥</Text>
+              ) : (
+                <View style={[styles.balloon, { backgroundColor: currentColor }]}>
+                  <View style={[styles.knot, { borderBottomColor: currentColor }]} />
+                </View>
+              )}
+            </TouchableOpacity>
+          </Animated.View>
 
-          {/* BIRD */}
-          {isBirdActive && (
-            <TouchableOpacity
-              style={[styles.birdContainer, { top: birdPos.top, left: birdPos.left }]}
-              onPress={handleHitBird}
-              activeOpacity={1}
-            >
+          {/* ANIMATED BIRD */}
+          <Animated.View style={[styles.birdWrapper, { top: birdY, left: birdX }]}>
+            <TouchableOpacity onPress={handleHitBird} activeOpacity={1}>
               <Text style={styles.birdEmoji}>{birdAngry ? '🤬' : '🦅'}</Text>
             </TouchableOpacity>
-          )}
+          </Animated.View>
         </>
       ) : (
         <TouchableOpacity style={styles.startButton} onPress={startGame}>
@@ -250,9 +285,10 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#87CEEB', // Sky blue background
+    backgroundColor: '#87CEEB',
     alignItems: 'center',
     paddingTop: 80,
+    overflow: 'hidden',
   },
   title: {
     fontSize: 36,
@@ -289,17 +325,19 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 15,
     marginTop: 10,
+    zIndex: 10,
   },
   score: { fontSize: 18, color: '#00E676', fontWeight: 'bold' },
   hits: { fontSize: 18, color: '#FFD740', fontWeight: 'bold' },
   timer: { fontSize: 18, color: '#FF5252', fontWeight: 'bold' },
   
-  balloonContainer: {
+  balloonWrapper: {
     position: 'absolute',
     width: BALLOON_SIZE,
     height: BALLOON_SIZE + 20,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 5,
   },
   balloon: {
     width: BALLOON_SIZE,
@@ -326,12 +364,13 @@ const styles = StyleSheet.create({
   explosion: {
     fontSize: 60,
   },
-  birdContainer: {
+  birdWrapper: {
     position: 'absolute',
     width: BIRD_SIZE,
     height: BIRD_SIZE,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 6,
   },
   birdEmoji: {
     fontSize: 50,
@@ -347,6 +386,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+    zIndex: 20,
   },
   startButtonText: {
     fontSize: 22,
