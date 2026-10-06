@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, TextInput, Dimensions, Animated, Easing, ScrollView, ImageBackground, Platform, createElement } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as NavigationBar from 'expo-navigation-bar';
+import { StatusBar } from 'expo-status-bar';
 
 let Audio;
 try {
@@ -79,6 +81,13 @@ export default function App() {
     // Initialize and Auto-login
     useEffect(() => {
         async function init() {
+            if (Platform.OS === 'android') {
+                try {
+                    await NavigationBar.setVisibilityAsync("hidden");
+                    await NavigationBar.setBehaviorAsync("overlay-swipe");
+                } catch(e) {}
+            }
+
             try {
                 if (Audio) {
                     const { sound: p } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/pop.ogg' });
@@ -404,6 +413,7 @@ export default function App() {
 
     return (
         <>
+            <StatusBar hidden={true} />
             {Platform.OS === 'web' && (
                 <style type="text/css">{`
           * { -webkit-touch-callout: none !important; -webkit-user-select: none !important; user-select: none !important; }
