@@ -7,7 +7,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const dbPath = path.join(__dirname, 'database.json');
+const dataDir = path.join(__dirname, '.data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+const dbPath = path.join(dataDir, 'database.json');
 
 // Initialize simple JSON DB
 if (!fs.existsSync(dbPath)) {
