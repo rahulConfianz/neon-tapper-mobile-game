@@ -1,4 +1,8 @@
-import { sql } from '@vercel/postgres';
+import { createPool } from '@vercel/postgres';
+
+const pool = createPool({
+  connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
+});
 
 export default async function handler(req, res) {
   // CORS headers
@@ -14,14 +18,14 @@ export default async function handler(req, res) {
 
   try {
     // Ensure Postgres tables exist!
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) UNIQUE NOT NULL,
         dob VARCHAR(50)
       );
     `;
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS scores (
         id SERIAL PRIMARY KEY,
         player_id INTEGER REFERENCES players(id),
@@ -30,7 +34,7 @@ export default async function handler(req, res) {
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
-    await sql`
+    await pool.sql`
       CREATE TABLE IF NOT EXISTS challenges (
         id SERIAL PRIMARY KEY,
         challenger_name VARCHAR(255) NOT NULL,
@@ -44,7 +48,7 @@ export default async function handler(req, res) {
 
     if (action === 'login') {
       const { name, dob } = payload;
-      const { rows } = await sql`SELECT * FROM players WHERE name = ${name}`;
+      const { rows } = await pool.sql`SELECT * FROM players WHERE name = ${name}`;
       const player = rows[0];
       
       if (player) {
@@ -53,13 +57,13 @@ export default async function handler(req, res) {
         }
         return res.status(200).json({ player });
       } else {
-        const { rows: inserted } = await sql`INSERT INTO players (name, dob) VALUES (${name}, ${dob || ''}) RETURNING *`;
+        const { rows: inserted } = await pool.sql`INSERT INTO players (name, dob) VALUES (${name}, ${dob || ''}) RETURNING *`;
         return res.status(200).json({ player: inserted[0] });
       }
     }
 
     if (action === 'save_score') {
-      await sql`INSERT INTO scores (player_id, score, level) VALUES (${payload.player_id}, ${payload.score}, ${payload.level})`;
+      await pool.sql`INSERT INTO scores (player_id, score, level) VALUES (${payload.player_id}, ${payload.score}, ${payload.level})`;
       return res.status(200).json({ success: true });
     }
 
@@ -67,7 +71,7 @@ export default async function handler(req, res) {
       const { playerId, playerName } = payload;
       
       // Global Top 10
-      const { rows: globalTop } = await sql`
+      const { rows: globalTop } = await pool.sql`
         SELECT p.name, MAX(s.score) as score, MAX(s.level) as level 
         FROM scores s 
         JOIN players p ON s.player_id = p.id 
@@ -77,7 +81,7 @@ export default async function handler(req, res) {
       `;
         
       // Personal Last 10
-      const { rows: personal } = await sql`
+      const { rows: personal } = await pool.sql`
         SELECT score, level, timestamp 
         FROM scores 
         WHERE player_id = ${playerId} 
@@ -86,7 +90,7 @@ export default async function handler(req, res) {
       `;
       
       // Challenges
-      const { rows: challenges } = await sql`
+      const { rows: challenges } = await pool.sql`
         SELECT * FROM challenges 
         WHERE target_name = ${playerName} 
         ORDER BY timestamp DESC 
@@ -94,14 +98,14 @@ export default async function handler(req, res) {
       `;
       
       // All Players (exclude self)
-      const { rows: allPlayerRows } = await sql`SELECT name FROM players WHERE name != ${playerName}`;
+      const { rows: allPlayerRows } = await pool.sql`SELECT name FROM players WHERE name != ${playerName}`;
       const allPlayers = allPlayerRows.map(r => r.name);
 
       return res.status(200).json({ globalTop, personal, challenges, allPlayers });
     }
 
     if (action === 'send_challenge') {
-      await sql`INSERT INTO challenges (challenger_name, target_name, target_score) VALUES (${payload.challenger_name}, ${payload.target_name}, ${payload.target_score})`;
+      await pool.sql`INSERT INTO challenges (challenger_name, target_name, target_score) VALUES (${payload.challenger_name}, ${payload.target_name}, ${payload.target_score})`;
       return res.status(200).json({ success: true });
     }
 
