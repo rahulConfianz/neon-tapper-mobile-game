@@ -4,7 +4,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
-const API_URL = 'http://localhost:3001/api'; // Local System DB backend
+const API_URL = '/api/database'; // Vercel Serverless Function
 
 const LEVEL_COLORS = [
   { name: 'Red', hex: '#FF3333' },
@@ -93,25 +93,26 @@ export default function App() {
 
   const fetchData = async (playerId, playerName) => {
     try {
-      const [gRes, pRes, cRes, plRes] = await Promise.all([
-        fetch(`${API_URL}/scores/global`),
-        fetch(`${API_URL}/scores/personal/${playerId}`),
-        fetch(`${API_URL}/challenges/${playerName}`),
-        fetch(`${API_URL}/players`)
-      ]);
-      setGlobalLeaderboard(await gRes.json());
-      setPersonalScores(await pRes.json());
-      setChallenges(await cRes.json());
-      setAllPlayers((await plRes.json()).filter(n => n !== playerName));
+      const res = await fetch(API_URL, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ action: 'get_data', payload: { playerId, playerName } })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setGlobalLeaderboard(data.globalTop);
+        setPersonalScores(data.personal);
+        setChallenges(data.challenges);
+        setAllPlayers(data.allPlayers);
+      }
     } catch(e) { console.log('DB fetch failed', e) }
   };
 
   const handleLogin = async () => {
     if (!player.name.trim()) return alert("Name required!");
     try {
-      const res = await fetch(`${API_URL}/login`, {
+      const res = await fetch(API_URL, {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ name: player.name.trim(), dob: player.dob })
+        body: JSON.stringify({ action: 'login', payload: { name: player.name.trim(), dob: player.dob } })
       });
       const data = await res.json();
       if (res.ok) {
@@ -123,7 +124,7 @@ export default function App() {
         alert(data.error);
       }
     } catch(e) {
-      alert("System DB Server not running! Check console.");
+      alert("Vercel DB not configured yet! Please read the setup instructions.");
     }
   };
 
@@ -131,9 +132,9 @@ export default function App() {
     if (!challengeTarget) return;
     try {
       const maxScore = personalScores.length > 0 ? personalScores[0].score : 0;
-      await fetch(`${API_URL}/challenges`, {
+      await fetch(API_URL, {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ challenger_name: player.name, target_name: challengeTarget, target_score: maxScore })
+        body: JSON.stringify({ action: 'send_challenge', payload: { challenger_name: player.name, target_name: challengeTarget, target_score: maxScore } })
       });
       alert('Challenge sent!');
       setShowChallengeModal(false);
@@ -142,9 +143,9 @@ export default function App() {
 
   const saveScoreToDB = async (finalScore, finalLevel) => {
     try {
-      await fetch(`${API_URL}/scores`, {
+      await fetch(API_URL, {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ player_id: player.id, score: finalScore, level: finalLevel })
+        body: JSON.stringify({ action: 'save_score', payload: { player_id: player.id, score: finalScore, level: finalLevel } })
       });
       fetchData(player.id, player.name);
     } catch(e) {}
