@@ -1,8 +1,4 @@
-import { createPool } from '@vercel/postgres';
-
-const pool = createPool({
-  connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
-});
+import { Pool } from '@neondatabase/serverless';
 
 export default async function handler(req, res) {
   // CORS headers
@@ -17,15 +13,22 @@ export default async function handler(req, res) {
   }
 
   try {
+    const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+    if (!connectionString) {
+      return res.status(500).json({ error: 'Database URL is missing in Vercel Environment Variables! Please redeploy after linking Neon.' });
+    }
+
+    const pool = new Pool({ connectionString });
+
     // Ensure Postgres tables exist!
-    await pool.sql`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) UNIQUE NOT NULL,
         dob VARCHAR(50)
       );
-    `;
-    await pool.sql`
+    `);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS scores (
         id SERIAL PRIMARY KEY,
         player_id INTEGER REFERENCES players(id),
@@ -33,8 +36,8 @@ export default async function handler(req, res) {
         level INTEGER NOT NULL,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-    `;
-    await pool.sql`
+    `);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS challenges (
         id SERIAL PRIMARY KEY,
         challenger_name VARCHAR(255) NOT NULL,
@@ -42,13 +45,13 @@ export default async function handler(req, res) {
         target_score INTEGER NOT NULL,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-    `;
+    `);
 
     const { action, payload } = req.body;
 
     if (action === 'login') {
       const { name, dob } = payload;
-      const { rows } = await pool.sql`SELECT * FROM players WHERE name = ${name}`;
+      const { rows } = await pool.query(`SELECT * FROM players WHERE name = $1`, [name]);
       const player = rows[0];
       
       if (player) {
@@ -57,13 +60,13 @@ export default async function handler(req, res) {
         }
         return res.status(200).json({ player });
       } else {
-        const { rows: inserted } = await pool.sql`INSERT INTO players (name, dob) VALUES (${name}, ${dob || ''}) RETURNING *`;
+        const { rows: inserted } = await pool.query(`INSERT INTO players (name, dob) VALUES ($1, $2) RETURNING *`, [name, dob || '']);
         return res.status(200).json({ player: inserted[0] });
       }
     }
 
     if (action === 'save_score') {
-      await pool.sql`INSERT INTO scores (player_id, score, level) VALUES (${payload.player_id}, ${payload.score}, ${payload.level})`;
+      await pool.query(`INSERT INTO scores (player_id, score, level) VALUES ($1, $2, $3)`, [payload.player_id, payload.score, payload.level]);
       return res.status(200).json({ success: true });
     }
 
@@ -71,41 +74,41 @@ export default async function handler(req, res) {
       const { playerId, playerName } = payload;
       
       // Global Top 10
-      const { rows: globalTop } = await pool.sql`
+      const { rows: globalTop } = await pool.query(`
         SELECT p.name, MAX(s.score) as score, MAX(s.level) as level 
         FROM scores s 
         JOIN players p ON s.player_id = p.id 
         GROUP BY p.id 
         ORDER BY score DESC 
         LIMIT 10
-      `;
+      `);
         
       // Personal Last 10
-      const { rows: personal } = await pool.sql`
+      const { rows: personal } = await pool.query(`
         SELECT score, level, timestamp 
         FROM scores 
-        WHERE player_id = ${playerId} 
+        WHERE player_id = $1 
         ORDER BY timestamp DESC 
         LIMIT 10
-      `;
+      `, [playerId]);
       
       // Challenges
-      const { rows: challenges } = await pool.sql`
+      const { rows: challenges } = await pool.query(`
         SELECT * FROM challenges 
-        WHERE target_name = ${playerName} 
+        WHERE target_name = $1 
         ORDER BY timestamp DESC 
         LIMIT 5
-      `;
+      `, [playerName]);
       
       // All Players (exclude self)
-      const { rows: allPlayerRows } = await pool.sql`SELECT name FROM players WHERE name != ${playerName}`;
+      const { rows: allPlayerRows } = await pool.query(`SELECT name FROM players WHERE name != $1`, [playerName]);
       const allPlayers = allPlayerRows.map(r => r.name);
 
       return res.status(200).json({ globalTop, personal, challenges, allPlayers });
     }
 
     if (action === 'send_challenge') {
-      await pool.sql`INSERT INTO challenges (challenger_name, target_name, target_score) VALUES (${payload.challenger_name}, ${payload.target_name}, ${payload.target_score})`;
+      await pool.query(`INSERT INTO challenges (challenger_name, target_name, target_score) VALUES ($1, $2, $3)`, [payload.challenger_name, payload.target_name, payload.target_score]);
       return res.status(200).json({ success: true });
     }
 
@@ -113,6 +116,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: 'Database connection failed: ' + error.message });
   }
 }
