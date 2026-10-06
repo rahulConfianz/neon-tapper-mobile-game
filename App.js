@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, TextInput, Dimensions, Animated, Easing, ScrollView, ImageBackground, Platform, createElement } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 let Audio;
 try {
@@ -12,7 +13,7 @@ try {
 const { width, height } = Dimensions.get('window');
 const API_URL = Platform.OS === 'web'
     ? '/api/database'
-    : 'https://YOUR-VERCEL-APP-LINK.vercel.app/api/database';
+    : 'https://neon-tapper-mobile-game.vercel.app/api/database';
 
 const LEVEL_COLORS = [
     { name: 'Red', hex: '#FF3333' },
@@ -53,6 +54,7 @@ export default function App() {
     // Challenge modal
     const [showChallengeModal, setShowChallengeModal] = useState(false);
     const [challengeTarget, setChallengeTarget] = useState('');
+    const [showDatePicker, setShowDatePicker] = useState(false);
 
     const [score, setScore] = useState(0);
     const [timeLeft, setTimeLeft] = useState(30);
@@ -120,6 +122,7 @@ export default function App() {
 
     const handleLogin = async () => {
         if (!player.name.trim()) return alert("Name required!");
+        if (!player.dob.trim()) return alert("Date of Birth required!");
         try {
             const res = await fetch(API_URL, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -447,13 +450,28 @@ export default function App() {
                                 })}
                             </View>
                         ) : (
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Date of Birth (YYYY-MM-DD)"
-                                placeholderTextColor="#BBB"
-                                value={player.dob}
-                                onChangeText={t => setPlayer({ ...player, dob: t })}
-                            />
+                            <>
+                                <Text style={[styles.input, { color: player.dob ? '#00E676' : '#999', paddingTop: 18 }]} onPress={() => setShowDatePicker(true)}>
+                                    {player.dob || "Date of Birth (Select Date)"}
+                                </Text>
+                                {showDatePicker && (
+                                    <DateTimePicker
+                                        value={player.dob ? new Date(player.dob) : new Date(2000, 0, 1)}
+                                        mode="date"
+                                        display="spinner"
+                                        onChange={(event, selectedDate) => {
+                                            setShowDatePicker(Platform.OS === 'ios');
+                                            if (selectedDate) {
+                                                const d = new Date(selectedDate);
+                                                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                                                setPlayer({ ...player, dob: d.toISOString().split('T')[0] });
+                                            }
+                                        }}
+                                        maximumDate={new Date('2026-12-31')}
+                                        minimumDate={new Date('1950-01-01')}
+                                    />
+                                )}
+                            </>
                         )}
 
                         <View style={styles.btnRow}>
