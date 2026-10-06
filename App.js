@@ -17,9 +17,9 @@ const LEVEL_COLORS = [
 ];
 
 const BACKGROUNDS = [
-  'https://images.unsplash.com/photo-1506744626753-eda8151a74a4?q=80&w=1500&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=1500&auto=format&fit=crop', // Moved up to ensure Level 1 loads reliably
   'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?q=80&w=1500&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=1500&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1506744626753-eda8151a74a4?q=80&w=1500&auto=format&fit=crop',
   'https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=1500&auto=format&fit=crop',
   'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=1500&auto=format&fit=crop',
   'https://images.unsplash.com/photo-1433086966358-54859d0ed716?q=80&w=1500&auto=format&fit=crop',
@@ -445,11 +445,7 @@ export default function App() {
             {rabbits.map(b => <Rabbit key={b.id} id={b.id} speed={b.speed} onHit={handleObstacleHit} onEscape={removeRabbit} />)}
             
             {/* Fog Obstacle Layer */}
-            {isFoggy && (
-              <View style={styles.fogOverlay} pointerEvents="none">
-                <Text selectable={false} style={{fontSize: 50, color: '#FFF', fontWeight: 'bold', textShadowColor: '#000', textShadowRadius: 10}}>🌫️ CLOUD FOG! 🌫️</Text>
-              </View>
-            )}
+            {isFoggy && <FogOverlay />}
 
             {/* Sci-Fi Gun perfectly attached to bottom center */}
             <Cannon angle={gunAngle} isShooting={isShooting} />
@@ -525,6 +521,35 @@ export default function App() {
 }
 
 // ---------------- ANIMATED COMPONENTS ----------------
+
+const FogOverlay = React.memo(() => {
+  const slideAnim = useRef(new Animated.Value(width)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(slideAnim, { toValue: 0, duration: 1500, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 1500, useNativeDriver: false })
+    ]).start(() => {
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(slideAnim, { toValue: -width, duration: 2000, easing: Easing.in(Easing.quad), useNativeDriver: false }),
+          Animated.timing(opacityAnim, { toValue: 0, duration: 2000, useNativeDriver: false })
+        ]).start();
+      }, 1500);
+    });
+  }, []);
+
+  return (
+    <Animated.View style={[styles.fogOverlay, { left: slideAnim, opacity: opacityAnim }]} pointerEvents="none">
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+        <Text selectable={false} style={{ fontSize: 150, opacity: 0.9 }}>☁️☁️☁️</Text>
+        <Text selectable={false} style={{ fontSize: 180, opacity: 0.9, marginLeft: 50 }}>☁️☁️☁️☁️</Text>
+        <Text selectable={false} style={{ fontSize: 150, opacity: 0.9, marginRight: 50 }}>☁️☁️☁️</Text>
+      </View>
+    </Animated.View>
+  );
+});
 
 const Cannon = ({ angle, isShooting }) => (
   <View style={styles.cannonWrapper}>
@@ -756,7 +781,7 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: '#222', padding: 25, borderRadius: 20, width: '90%', alignItems: 'center', borderWidth: 2, borderColor: '#00E676' },
 
 
-  fogOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 40, justifyContent: 'center', alignItems: 'center' }, // Requires backdropFilter inline or injected CSS for web
+  fogOverlay: { position: 'absolute', top: 0, bottom: 0, width: '100%', height: '100%', backgroundColor: 'rgba(255,255,255,0.85)', zIndex: 40, justifyContent: 'center', alignItems: 'center' }, // Cloud blur effect
   
   btnRow: { flexDirection: 'row', gap: 15, marginTop: 10 },
   startButton: { backgroundColor: '#00E676', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30, elevation: 10 },
