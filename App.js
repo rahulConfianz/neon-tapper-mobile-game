@@ -17,10 +17,9 @@ const LEVEL_COLORS = [
 ];
 
 const BACKGROUNDS = [
-  'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=1500&auto=format&fit=crop', // Moved up to ensure Level 1 loads reliably
-  'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?q=80&w=1500&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1506744626753-eda8151a74a4?q=80&w=1500&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=1500&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=1500&auto=format&fit=crop', // Level 1
+  'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?q=80&w=1500&auto=format&fit=crop', // Level 2
+  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=1500&auto=format&fit=crop', // Level 3 (Fixed)
   'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=1500&auto=format&fit=crop',
   'https://images.unsplash.com/photo-1433086966358-54859d0ed716?q=80&w=1500&auto=format&fit=crop',
   'https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?q=80&w=1500&auto=format&fit=crop',
@@ -392,6 +391,11 @@ export default function App() {
               </View>
               <View style={styles.secondaryButton} onStartShouldSetResponder={() => true} onResponderGrant={() => setShowChallengeModal(true)}>
                 <Text selectable={false} style={styles.startButtonText}>CHALLENGE</Text>
+                {challenges.length > 0 && (
+                  <View style={{position: 'absolute', top: -10, right: -10, backgroundColor: '#FF3333', borderRadius: 15, width: 30, height: 30, alignItems: 'center', justifyContent: 'center', elevation: 15}}>
+                    <Text style={{color: '#FFF', fontWeight: '900'}}>{challenges.length}</Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -505,7 +509,7 @@ export default function App() {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={{color: '#FFF', fontSize: 20, fontWeight: 'bold', marginBottom: 15}}>Send a Challenge!</Text>
-              <ScrollView style={{maxHeight: 200, width: '100%'}}>
+              <ScrollView style={{maxHeight: 250, width: '100%', marginBottom: 15}}>
                 {allPlayers.map((pName, idx) => (
                   <Text key={idx} style={[styles.pickerItem, challengeTarget === pName && styles.pickerItemActive]} onPress={() => setChallengeTarget(pName)}>
                     {pName}
@@ -538,26 +542,26 @@ const FogOverlay = React.memo(() => {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(slideAnim, { toValue: -width * 1.2, duration: 4000, easing: Easing.linear, useNativeDriver: false }),
-      Animated.timing(slideAnim2, { toValue: -width * 1.5, duration: 5000, easing: Easing.linear, useNativeDriver: false }),
+      Animated.timing(slideAnim, { toValue: -4000, duration: 6000, easing: Easing.linear, useNativeDriver: false }),
+      Animated.timing(slideAnim2, { toValue: -4000, duration: 8000, easing: Easing.linear, useNativeDriver: false }),
       Animated.sequence([
-        Animated.timing(opacityAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
-        Animated.delay(2000),
-        Animated.timing(opacityAnim, { toValue: 0, duration: 1000, useNativeDriver: false })
+        Animated.timing(opacityAnim, { toValue: 1, duration: 1500, useNativeDriver: false }),
+        Animated.delay(3000),
+        Animated.timing(opacityAnim, { toValue: 0, duration: 1500, useNativeDriver: false })
       ])
     ]).start();
   }, []);
 
   return (
     <Animated.View style={[styles.fogOverlay, { opacity: opacityAnim }]} pointerEvents="none">
-      <Animated.View style={{ position: 'absolute', top: '10%', left: slideAnim, flexDirection: 'row' }}>
-        <Text selectable={false} style={{ fontSize: 160, opacity: 0.95 }}>☁️☁️☁️☁️☁️</Text>
+      <Animated.View style={{ position: 'absolute', top: '5%', left: slideAnim, flexDirection: 'row' }}>
+        <Text selectable={false} style={{ fontSize: 160, opacity: 0.95 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
       </Animated.View>
-      <Animated.View style={{ position: 'absolute', top: '40%', left: slideAnim2, flexDirection: 'row' }}>
-        <Text selectable={false} style={{ fontSize: 220, opacity: 0.85 }}>☁️☁️☁️☁️</Text>
+      <Animated.View style={{ position: 'absolute', top: '35%', left: slideAnim2, flexDirection: 'row' }}>
+        <Text selectable={false} style={{ fontSize: 220, opacity: 0.85 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
       </Animated.View>
-      <Animated.View style={{ position: 'absolute', bottom: '15%', left: slideAnim, flexDirection: 'row' }}>
-        <Text selectable={false} style={{ fontSize: 180, opacity: 0.95 }}>☁️☁️☁️☁️☁️</Text>
+      <Animated.View style={{ position: 'absolute', bottom: '10%', left: slideAnim, flexDirection: 'row' }}>
+        <Text selectable={false} style={{ fontSize: 180, opacity: 0.95 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
       </Animated.View>
     </Animated.View>
   );
@@ -791,7 +795,8 @@ const styles = StyleSheet.create({
   
   modalOverlay: { backgroundColor: 'rgba(0,0,0,0.8)', ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', zIndex: 2000 },
   modalContent: { backgroundColor: '#222', padding: 25, borderRadius: 20, width: '90%', alignItems: 'center', borderWidth: 2, borderColor: '#00E676' },
-
+  pickerItem: { color: '#FFF', fontSize: 18, paddingVertical: 12, paddingHorizontal: 20, textAlign: 'center', backgroundColor: '#333', marginVertical: 5, borderRadius: 10, overflow: 'hidden' },
+  pickerItemActive: { backgroundColor: '#00E676', color: '#000', fontWeight: 'bold' },
 
   fogOverlay: { position: 'absolute', top: 0, bottom: 0, width: '100%', height: '100%', zIndex: 40, justifyContent: 'center', alignItems: 'center' }, // Volumetric clouds
   
