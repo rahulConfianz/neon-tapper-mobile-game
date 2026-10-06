@@ -4,6 +4,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
+const API_URL = 'http://localhost:3001/api'; // Local System DB backend
 
 const LEVEL_COLORS = [
   { name: 'Red', hex: '#FF3333' },
@@ -28,9 +29,23 @@ const BACKGROUNDS = [
 let entityIdCounter = 0;
 
 export default function App() {
-  const [gameState, setGameState] = useState('HOME');
-  const [player, setPlayer] = useState({ name: '', dob: '' });
-  const [leaderboard, setLeaderboard] = useState([]);
+  const [gameState, setGameState] = useState('LOGIN'); // LOGIN, HOME, PLAYING, LEVEL_COMPLETE, GAME_OVER
+  const [player, setPlayer] = useState({ id: null, name: '', dob: '' });
+  
+  const [globalLeaderboard, setGlobalLeaderboard] = useState([]);
+  const [personalScores, setPersonalScores] = useState([]);
+  const [challenges, setChallenges] = useState([]);
+  const [allPlayers, setAllPlayers] = useState([]);
+
+  // Date picker states
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selYear, setSelYear] = useState('2000');
+  const [selMonth, setSelMonth] = useState('01');
+  const [selDay, setSelDay] = useState('01');
+
+  // Challenge modal
+  const [showChallengeModal, setShowChallengeModal] = useState(false);
+  const [challengeTarget, setChallengeTarget] = useState('');
 
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
@@ -39,6 +54,9 @@ export default function App() {
 
   const [balloons, setBalloons] = useState([]);
   const [birds, setBirds] = useState([]);
+  const [frogs, setFrogs] = useState([]);
+  const [rabbits, setRabbits] = useState([]);
+  const [isFoggy, setIsFoggy] = useState(false);
 
   const [soundPop, setSoundPop] = useState();
   const [soundMiss, setSoundMiss] = useState();
@@ -49,6 +67,7 @@ export default function App() {
   const [gunAngle, setGunAngle] = useState(0);
   const [isShooting, setIsShooting] = useState(false);
 
+  // Initialize and Auto-login
   useEffect(() => {
     async function init() {
       try {
@@ -56,51 +75,97 @@ export default function App() {
         const { sound: m } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg' });
         const { sound: a } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/woodpecker.ogg' });
         const { sound: w } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/slip.ogg' });
-        setSoundPop(p);
-        setSoundMiss(m);
-        setSoundAngry(a);
-        setSoundWrong(w);
-      } catch (e) { }
+        setSoundPop(p); setSoundMiss(m); setSoundAngry(a); setSoundWrong(w);
+      } catch (e) { console.log(e) }
       
       try {
-        const data = await AsyncStorage.getItem('neonTapperScores');
-        if (data) {
-          setLeaderboard(JSON.parse(data));
-        } else {
-          const dummy = [
-            { name: 'MasterTapper', score: 150, level: 6 },
-            { name: 'Alex', score: 85, level: 3 },
-          ];
-          setLeaderboard(dummy);
-          await AsyncStorage.setItem('neonTapperScores', JSON.stringify(dummy));
+        const savedPlayer = await AsyncStorage.getItem('neonPlayer');
+        if (savedPlayer) {
+          const p = JSON.parse(savedPlayer);
+          setPlayer(p);
+          fetchData(p.id, p.name);
+          setGameState('HOME');
         }
       } catch(e) {}
     }
     init();
-    return () => {
-      if (soundPop) soundPop.unloadAsync();
-      if (soundMiss) soundMiss.unloadAsync();
-      if (soundAngry) soundAngry.unloadAsync();
-      if (soundWrong) soundWrong.unloadAsync();
-    };
   }, []);
 
-  const playSound = async (sound) => {
-    if (sound) {
-      try { await sound.replayAsync(); } catch (e) {}
+  const fetchData = async (playerId, playerName) => {
+    try {
+      const [gRes, pRes, cRes, plRes] = await Promise.all([
+        fetch(`${API_URL}/scores/global`),
+        fetch(`${API_URL}/scores/personal/${playerId}`),
+        fetch(`${API_URL}/challenges/${playerName}`),
+        fetch(`${API_URL}/players`)
+      ]);
+      setGlobalLeaderboard(await gRes.json());
+      setPersonalScores(await pRes.json());
+      setChallenges(await cRes.json());
+      setAllPlayers((await plRes.json()).filter(n => n !== playerName));
+    } catch(e) { console.log('DB fetch failed', e) }
+  };
+
+  const handleLogin = async () => {
+    if (!player.name.trim()) return alert("Name required!");
+    try {
+      const res = await fetch(`${API_URL}/login`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name: player.name.trim(), dob: player.dob })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPlayer(data.player);
+        await AsyncStorage.setItem('neonPlayer', JSON.stringify(data.player));
+        fetchData(data.player.id, data.player.name);
+        setGameState('HOME');
+      } else {
+        alert(data.error);
+      }
+    } catch(e) {
+      alert("System DB Server not running! Check console.");
     }
   };
 
-  const saveScore = async (finalScore, finalLevel) => {
+  const handleSendChallenge = async () => {
+    if (!challengeTarget) return;
     try {
-      const pName = player.name.trim() || 'Anonymous';
-      const newEntry = { name: pName, score: finalScore, level: finalLevel, id: Date.now() };
-      const newBoard = [...leaderboard, newEntry].sort((a,b) => b.score - a.score).slice(0, 10);
-      setLeaderboard(newBoard);
-      await AsyncStorage.setItem('neonTapperScores', JSON.stringify(newBoard));
+      const maxScore = personalScores.length > 0 ? personalScores[0].score : 0;
+      await fetch(`${API_URL}/challenges`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ challenger_name: player.name, target_name: challengeTarget, target_score: maxScore })
+      });
+      alert('Challenge sent!');
+      setShowChallengeModal(false);
     } catch(e) {}
   };
 
+  const saveScoreToDB = async (finalScore, finalLevel) => {
+    try {
+      await fetch(`${API_URL}/scores`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ player_id: player.id, score: finalScore, level: finalLevel })
+      });
+      fetchData(player.id, player.name);
+    } catch(e) {}
+  };
+
+  // Fog logic
+  useEffect(() => {
+    if (gameState === 'PLAYING') {
+      const fogInterval = setInterval(() => {
+        if (Math.random() < 0.25) { // 25% chance of fog every 12 seconds
+          setIsFoggy(true);
+          setTimeout(() => setIsFoggy(false), 5000);
+        }
+      }, 12000);
+      return () => clearInterval(fogInterval);
+    } else {
+      setIsFoggy(false);
+    }
+  }, [gameState]);
+
+  // Timer logic
   useEffect(() => {
     let timer;
     if (gameState === 'PLAYING' && timeLeft > 0) {
@@ -111,12 +176,18 @@ export default function App() {
     return () => clearInterval(timer);
   }, [gameState, timeLeft]);
 
+  // Spawner loop
   useEffect(() => {
     let timeout;
     const spawnLoop = () => {
       if (gameState === 'PLAYING') {
         spawnBalloon();
-        if (Math.random() < 0.35) spawnBird();
+        
+        const rand = Math.random();
+        if (rand < 0.2) spawnBird();
+        else if (rand < 0.35) spawnFrog();
+        else if (rand < 0.5) spawnRabbit();
+        
         const spawnRate = Math.max(600, 1600 - (level * 100));
         timeout = setTimeout(spawnLoop, spawnRate);
       }
@@ -127,31 +198,24 @@ export default function App() {
 
   const handleGameOver = () => {
     setGameState('GAME_OVER');
-    setBalloons([]);
-    setBirds([]);
-    saveScore(score, level);
+    setBalloons([]); setBirds([]); setFrogs([]); setRabbits([]);
+    saveScoreToDB(score, level);
   };
 
   const startGame = () => {
-    setScore(0);
-    setTimeLeft(30);
-    setLevel(1);
-    setTargetsHit(0);
-    setBalloons([]);
-    setBirds([]);
+    setScore(0); setTimeLeft(30); setLevel(1); setTargetsHit(0);
+    setBalloons([]); setBirds([]); setFrogs([]); setRabbits([]);
     setGameState('PLAYING');
   };
 
   const nextLevel = () => {
-    setLevel(l => l + 1);
-    setTimeLeft(t => t + 5);
-    setTargetsHit(0);
-    setBalloons([]);
-    setBirds([]);
+    setLevel(l => l + 1); setTimeLeft(t => t + 5); setTargetsHit(0);
+    setBalloons([]); setBirds([]); setFrogs([]); setRabbits([]);
     setGameState('PLAYING');
   };
 
   const targetColorObj = LEVEL_COLORS[(level - 1) % LEVEL_COLORS.length];
+  // Ensure bgImage is available right from level 1 (index 0)
   const bgImage = BACKGROUNDS[(level - 1) % BACKGROUNDS.length];
 
   const spawnBalloon = () => {
@@ -162,25 +226,29 @@ export default function App() {
       const wrongColors = LEVEL_COLORS.filter(c => c.hex !== targetColorObj.hex);
       colorObj = wrongColors[Math.floor(Math.random() * wrongColors.length)];
     }
-    const currentSpeed = Math.max(2000, 4500 - (level * 250));
-    const currentSize = Math.max(45, 85 - (level * 4)); 
-    const newBalloon = { id: entityIdCounter, color: colorObj.hex, isTarget: colorObj.hex === targetColorObj.hex, duration: currentSpeed, size: currentSize };
-    setBalloons(prev => [...prev, newBalloon]);
+    const speed = Math.max(2000, 4500 - (level * 250));
+    const size = Math.max(45, 85 - (level * 4)); 
+    setBalloons(prev => [...prev, { id: entityIdCounter, color: colorObj.hex, isTarget: colorObj.hex === targetColorObj.hex, duration: speed, size }]);
   };
 
   const spawnBird = () => {
-    entityIdCounter++;
-    const speed = Math.random() * 1500 + 2000;
-    const newBird = { id: entityIdCounter, speed };
-    setBirds(prev => [...prev, newBird]);
+    setBirds(prev => [...prev, { id: ++entityIdCounter, speed: Math.random() * 1500 + 2000 }]);
+  };
+  const spawnFrog = () => {
+    setFrogs(prev => [...prev, { id: ++entityIdCounter, speed: Math.random() * 1000 + 2500 }]);
+  };
+  const spawnRabbit = () => {
+    setRabbits(prev => [...prev, { id: ++entityIdCounter, speed: Math.random() * 800 + 1500 }]); // Rabbits are faster!
   };
 
   const removeBalloon = useCallback((id) => setBalloons(prev => prev.filter(b => b.id !== id)), []);
   const removeBird = useCallback((id) => setBirds(prev => prev.filter(b => b.id !== id)), []);
+  const removeFrog = useCallback((id) => setFrogs(prev => prev.filter(b => b.id !== id)), []);
+  const removeRabbit = useCallback((id) => setRabbits(prev => prev.filter(b => b.id !== id)), []);
 
   const updateGunAim = (pageX, pageY) => {
     const dx = pageX - width / 2;
-    const dy = height - 30 - pageY;
+    const dy = height - 50 - pageY;
     setGunAngle(Math.atan2(dx, dy) * (180 / Math.PI));
   };
 
@@ -196,7 +264,6 @@ export default function App() {
 
   const handleHitBalloon = useCallback((id, isTarget, pageX, pageY) => {
     if (gameState !== 'PLAYING') return;
-    
     if (pageX !== undefined && pageY !== undefined) updateGunAim(pageX, pageY);
     triggerShoot();
 
@@ -204,13 +271,11 @@ export default function App() {
       playSound(soundPop);
       setScore(s => s + 5);
       setTimeLeft(t => t + 1);
-      
       setTargetsHit(prev => {
         const newHits = prev + 1;
         if (newHits >= 10) {
           setGameState('LEVEL_COMPLETE');
-          setBalloons([]);
-          setBirds([]);
+          setBalloons([]); setBirds([]); setFrogs([]); setRabbits([]);
           return 0;
         }
         return newHits;
@@ -222,12 +287,10 @@ export default function App() {
     }
   }, [soundPop, soundWrong, gameState]);
 
-  const handleHitBird = useCallback((id, pageX, pageY) => {
+  const handleObstacleHit = useCallback((id, pageX, pageY) => {
     if (gameState !== 'PLAYING') return;
-    
     if (pageX !== undefined && pageY !== undefined) updateGunAim(pageX, pageY);
     triggerShoot();
-
     playSound(soundAngry);
     setScore(s => s - 10);
     setTimeLeft(t => t - 5);
@@ -235,9 +298,7 @@ export default function App() {
 
   const handleMiss = (e) => {
     if (gameState === 'PLAYING') {
-      if (e && e.nativeEvent) {
-        updateGunAim(e.nativeEvent.pageX, e.nativeEvent.pageY);
-      }
+      if (e && e.nativeEvent) updateGunAim(e.nativeEvent.pageX, e.nativeEvent.pageY);
       triggerShoot();
       playSound(soundMiss);
       setScore(s => s - 2);
@@ -248,15 +309,8 @@ export default function App() {
     <>
       {Platform.OS === 'web' && (
         <style type="text/css">{`
-          * {
-            -webkit-touch-callout: none !important;
-            -webkit-user-select: none !important;
-            user-select: none !important;
-          }
-          input {
-            -webkit-user-select: text !important;
-            user-select: text !important;
-          }
+          * { -webkit-touch-callout: none !important; -webkit-user-select: none !important; user-select: none !important; }
+          input, select, textarea { -webkit-user-select: text !important; user-select: text !important; }
         `}</style>
       )}
       
@@ -269,47 +323,83 @@ export default function App() {
       >
         <View style={styles.darkOverlay} />
         
-        {/* ---------------- HOME SCREEN ---------------- */}
-        {gameState === 'HOME' && (
+        {/* ---------------- LOGIN SCREEN ---------------- */}
+        {gameState === 'LOGIN' && (
           <View style={styles.homeBox}>
             <Text selectable={false} style={styles.title}>Neon Tapper</Text>
-            <Text selectable={false} style={styles.subtitle}>Log in to play!</Text>
+            <Text selectable={false} style={styles.subtitle}>System DB Connection</Text>
             
             <TextInput 
               style={styles.input} 
-              placeholder="Player Name" 
+              placeholder="Unique Player Name" 
               placeholderTextColor="#BBB"
               value={player.name}
               onChangeText={t => setPlayer({...player, name: t})}
             />
-            <TextInput 
-              style={styles.input} 
-              placeholder="Date of Birth (e.g. 01/01/2000)" 
-              placeholderTextColor="#BBB"
-              value={player.dob}
-              onChangeText={t => setPlayer({...player, dob: t})}
-            />
+            
+            {/* Custom DOB Picker Trigger */}
+            <View 
+              style={[styles.input, { justifyContent: 'center' }]} 
+              onStartShouldSetResponder={() => true} 
+              onResponderGrant={() => setShowDatePicker(true)}
+            >
+              <Text style={{color: player.dob ? '#FFF' : '#BBB'}}>{player.dob || 'Select Date of Birth'}</Text>
+            </View>
 
             <View style={styles.btnRow}>
-              <View 
-                style={[styles.startButton, { opacity: player.name.trim() ? 1 : 0.5 }]} 
-                onStartShouldSetResponder={() => true} 
-                onResponderGrant={() => { if (player.name.trim()) startGame(); }}
-              >
-                <Text selectable={false} style={styles.startButtonText}>START GAME</Text>
+              <View style={[styles.startButton, { opacity: player.name.trim() ? 1 : 0.5 }]} onStartShouldSetResponder={() => true} onResponderGrant={handleLogin}>
+                <Text selectable={false} style={styles.startButtonText}>LOGIN / REGISTER</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ---------------- HOME SCREEN (DASHBOARD) ---------------- */}
+        {gameState === 'HOME' && (
+          <View style={styles.homeBox}>
+            <Text selectable={false} style={styles.title}>Welcome {player.name}!</Text>
+            <View style={styles.btnRow}>
+              <View style={styles.startButton} onStartShouldSetResponder={() => true} onResponderGrant={startGame}>
+                <Text selectable={false} style={styles.startButtonText}>PLAY GAME</Text>
+              </View>
+              <View style={styles.secondaryButton} onStartShouldSetResponder={() => true} onResponderGrant={() => setShowChallengeModal(true)}>
+                <Text selectable={false} style={styles.startButtonText}>CHALLENGE</Text>
               </View>
             </View>
 
-            <View style={styles.leaderboardBox}>
-              <Text selectable={false} style={styles.leaderboardTitle}>🏆 Global Scores 🏆</Text>
-              <ScrollView style={{maxHeight: 200, width: '100%'}}>
-                {leaderboard.map((lb, idx) => (
-                  <View key={idx} style={styles.lbRow}>
-                    <Text selectable={false} style={styles.lbName}>{idx + 1}. {lb.name}</Text>
-                    <Text selectable={false} style={styles.lbScore}>Score: {lb.score}</Text>
-                  </View>
+            {challenges.length > 0 && (
+              <View style={[styles.leaderboardBox, { borderColor: '#FF5252', shadowColor: '#FF5252' }]}>
+                <Text selectable={false} style={[styles.leaderboardTitle, { color: '#FF5252' }]}>⚔️ Challenges Received ⚔️</Text>
+                {challenges.map(c => (
+                  <Text key={c.id} style={styles.lbName}>{c.challenger_name} challenged you to beat {c.target_score}!</Text>
                 ))}
-              </ScrollView>
+              </View>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20, width: '100%', justifyContent: 'center' }}>
+              <View style={[styles.leaderboardBox, { width: '45%', marginTop: 0 }]}>
+                <Text selectable={false} style={styles.leaderboardTitle}>🌍 Global Top 10</Text>
+                <ScrollView style={{maxHeight: 250, width: '100%'}}>
+                  {globalLeaderboard.map((lb, idx) => (
+                    <View key={idx} style={styles.lbRow}>
+                      <Text selectable={false} style={styles.lbName}>{idx + 1}. {lb.name}</Text>
+                      <Text selectable={false} style={styles.lbScore}>{lb.score}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+              
+              <View style={[styles.leaderboardBox, { width: '45%', marginTop: 0, borderColor: '#00E676', shadowColor: '#00E676' }]}>
+                <Text selectable={false} style={[styles.leaderboardTitle, {color: '#00E676'}]}>👤 Personal Last 10</Text>
+                <ScrollView style={{maxHeight: 250, width: '100%'}}>
+                  {personalScores.map((lb, idx) => (
+                    <View key={idx} style={styles.lbRow}>
+                      <Text selectable={false} style={styles.lbName}>Lvl {lb.level}</Text>
+                      <Text selectable={false} style={styles.lbScore}>{lb.score}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
             </View>
           </View>
         )}
@@ -330,14 +420,19 @@ export default function App() {
               <Text selectable={false} style={styles.timer}>Time: {timeLeft}s</Text>
             </View>
 
-            {balloons.map(b => (
-              <Balloon key={b.id} id={b.id} color={b.color} isTarget={b.isTarget} duration={b.duration} size={b.size} onHit={handleHitBalloon} onEscape={removeBalloon} />
-            ))}
-            {birds.map(b => (
-              <Bird key={b.id} id={b.id} speed={b.speed} onHit={handleHitBird} onEscape={removeBird} />
-            ))}
+            {balloons.map(b => <Balloon key={b.id} id={b.id} color={b.color} isTarget={b.isTarget} duration={b.duration} size={b.size} onHit={handleHitBalloon} onEscape={removeBalloon} />)}
+            {birds.map(b => <Bird key={b.id} id={b.id} speed={b.speed} onHit={handleObstacleHit} onEscape={removeBird} />)}
+            {frogs.map(b => <Frog key={b.id} id={b.id} speed={b.speed} onHit={handleObstacleHit} onEscape={removeFrog} />)}
+            {rabbits.map(b => <Rabbit key={b.id} id={b.id} speed={b.speed} onHit={handleObstacleHit} onEscape={removeRabbit} />)}
             
-            {/* Sci-Fi Gun */}
+            {/* Fog Obstacle Layer */}
+            {isFoggy && (
+              <View style={styles.fogOverlay} pointerEvents="none">
+                <Text selectable={false} style={{fontSize: 50, color: '#FFF', fontWeight: 'bold', textShadowColor: '#000', textShadowRadius: 10}}>🌫️ CLOUD FOG! 🌫️</Text>
+              </View>
+            )}
+
+            {/* Sci-Fi Gun perfectly attached to bottom center */}
             <Cannon angle={gunAngle} isShooting={isShooting} />
           </>
         )}
@@ -379,6 +474,64 @@ export default function App() {
           </View>
         )}
 
+        {/* ---------------- DATE PICKER MODAL ---------------- */}
+        {showDatePicker && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={{color: '#FFF', fontSize: 20, fontWeight: 'bold', marginBottom: 15}}>Select Date of Birth</Text>
+              <View style={{flexDirection: 'row', gap: 10, height: 200}}>
+                {/* Years */}
+                <ScrollView style={styles.pickerColumn}>
+                  {Array.from({length: 2026 - 1950 + 1}, (_, i) => 1950 + i).map(y => (
+                    <Text key={y} style={[styles.pickerItem, selYear == y && styles.pickerItemActive]} onPress={() => setSelYear(y.toString())}>{y}</Text>
+                  ))}
+                </ScrollView>
+                {/* Months */}
+                <ScrollView style={styles.pickerColumn}>
+                  {Array.from({length: 12}, (_, i) => String(i + 1).padStart(2, '0')).map(m => (
+                    <Text key={m} style={[styles.pickerItem, selMonth == m && styles.pickerItemActive]} onPress={() => setSelMonth(m)}>{m}</Text>
+                  ))}
+                </ScrollView>
+                {/* Days */}
+                <ScrollView style={styles.pickerColumn}>
+                  {Array.from({length: 31}, (_, i) => String(i + 1).padStart(2, '0')).map(d => (
+                    <Text key={d} style={[styles.pickerItem, selDay == d && styles.pickerItemActive]} onPress={() => setSelDay(d)}>{d}</Text>
+                  ))}
+                </ScrollView>
+              </View>
+              <View style={styles.btnRow}>
+                <View style={styles.primaryButton} onStartShouldSetResponder={() => true} onResponderGrant={() => { setPlayer({...player, dob: `${selYear}-${selMonth}-${selDay}`}); setShowDatePicker(false); }}>
+                  <Text style={styles.startButtonText}>Confirm</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ---------------- CHALLENGE MODAL ---------------- */}
+        {showChallengeModal && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={{color: '#FFF', fontSize: 20, fontWeight: 'bold', marginBottom: 15}}>Send a Challenge!</Text>
+              <ScrollView style={{maxHeight: 200, width: '100%'}}>
+                {allPlayers.map((pName, idx) => (
+                  <Text key={idx} style={[styles.pickerItem, challengeTarget === pName && styles.pickerItemActive]} onPress={() => setChallengeTarget(pName)}>
+                    {pName}
+                  </Text>
+                ))}
+              </ScrollView>
+              <View style={styles.btnRow}>
+                <View style={styles.primaryButton} onStartShouldSetResponder={() => true} onResponderGrant={handleSendChallenge}>
+                  <Text style={styles.startButtonText}>Send</Text>
+                </View>
+                <View style={styles.secondaryButton} onStartShouldSetResponder={() => true} onResponderGrant={() => setShowChallengeModal(false)}>
+                  <Text style={styles.startButtonText}>Cancel</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
       </ImageBackground>
     </>
   );
@@ -403,16 +556,11 @@ const Cannon = ({ angle, isShooting }) => (
 const CelebrationBanner = () => {
   const scale = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
-    Animated.loop(Animated.sequence([
-      Animated.timing(scale, { toValue: 1.2, duration: 500, useNativeDriver: true }),
-      Animated.timing(scale, { toValue: 0.8, duration: 500, useNativeDriver: true }),
-    ])).start();
+    Animated.loop(Animated.sequence([ Animated.timing(scale, { toValue: 1.2, duration: 500, useNativeDriver: true }), Animated.timing(scale, { toValue: 0.8, duration: 500, useNativeDriver: true }) ])).start();
   }, []);
   return (
     <Animated.View style={{ transform: [{ scale }], flexDirection: 'row', gap: 10, marginBottom: 20 }}>
-      <Text selectable={false} style={{ fontSize: 50 }}>🎉</Text>
-      <Text selectable={false} style={{ fontSize: 50 }}>🎈</Text>
-      <Text selectable={false} style={{ fontSize: 50 }}>🌟</Text>
+      <Text selectable={false} style={{ fontSize: 50 }}>🎉</Text><Text selectable={false} style={{ fontSize: 50 }}>🎈</Text><Text selectable={false} style={{ fontSize: 50 }}>🌟</Text>
     </Animated.View>
   );
 };
@@ -420,10 +568,7 @@ const CelebrationBanner = () => {
 const SadDucky = () => {
   const translateY = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.loop(Animated.sequence([
-      Animated.timing(translateY, { toValue: -15, duration: 800, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 0, duration: 800, useNativeDriver: true }),
-    ])).start();
+    Animated.loop(Animated.sequence([ Animated.timing(translateY, { toValue: -15, duration: 800, useNativeDriver: true }), Animated.timing(translateY, { toValue: 0, duration: 800, useNativeDriver: true }) ])).start();
   }, []);
   return (
     <Animated.View style={{ transform: [{ translateY }], marginBottom: 20 }}>
@@ -440,31 +585,22 @@ const Balloon = React.memo(({ id, color, isTarget, duration, size, onHit, onEsca
 
   useEffect(() => {
     Animated.timing(yAnim, { toValue: -150, duration: duration, easing: Easing.linear, useNativeDriver: false })
-      .start(({ finished }) => {
-        if (finished && !isDead.current) onEscape(id);
-      });
+      .start(({ finished }) => { if (finished && !isDead.current) onEscape(id); });
   }, [duration, id, onEscape, yAnim]);
 
   const handlePress = (e) => {
     if (e && e.stopPropagation) e.stopPropagation();
     if (isDead.current) return;
-    isDead.current = true;
-    setIsExploding(true);
-    yAnim.stopAnimation();
-    
-    // Pass coordinates back to the main App to aim the gun
+    isDead.current = true; setIsExploding(true); yAnim.stopAnimation();
     const { pageX, pageY } = e.nativeEvent;
     onHit(id, isTarget, pageX, pageY);
-    
     setTimeout(() => onEscape(id), 200);
   };
 
   return (
     <Animated.View style={[styles.entityWrapper, { top: yAnim, left: xPos }]} onStartShouldSetResponder={() => true} onResponderGrant={handlePress}>
       <View style={styles.hitArea}>
-        {isExploding ? (
-          <Text selectable={false} style={{ fontSize: size }}>{isTarget ? '💥' : '❌'}</Text>
-        ) : (
+        {isExploding ? <Text selectable={false} style={{ fontSize: size }}>{isTarget ? '💥' : '❌'}</Text> : (
           <View style={[styles.balloonBase, { backgroundColor: color, width: size, height: size * 1.2, borderRadius: size / 2 }]}>
             <View style={styles.balloonHighlight} />
             <View style={[styles.knotBase, { borderBottomColor: color, left: size / 2 - 5 }]} />
@@ -476,39 +612,92 @@ const Balloon = React.memo(({ id, color, isTarget, duration, size, onHit, onEsca
 });
 
 const Bird = React.memo(({ id, speed, onHit, onEscape }) => {
-  const direction = useRef(Math.random() > 0.5 ? 1 : -1).current; 
-  const xAnim = useRef(new Animated.Value(direction === 1 ? -100 : width + 100)).current;
+  const dir = useRef(Math.random() > 0.5 ? 1 : -1).current; 
+  const xAnim = useRef(new Animated.Value(dir === 1 ? -100 : width + 100)).current;
   const yPos = useRef(Math.random() * (height - 350) + 100).current;
   const [isAngry, setIsAngry] = useState(false);
   const isDead = useRef(false);
 
   useEffect(() => {
-    Animated.timing(xAnim, { toValue: direction === 1 ? width + 100 : -100, duration: speed, easing: Easing.linear, useNativeDriver: false })
-      .start(({ finished }) => {
-        if (finished && !isDead.current) onEscape(id);
-      });
-  }, [direction, id, onEscape, speed, xAnim]);
+    Animated.timing(xAnim, { toValue: dir === 1 ? width + 100 : -100, duration: speed, easing: Easing.linear, useNativeDriver: false }).start(({ finished }) => { if (finished && !isDead.current) onEscape(id); });
+  }, []);
 
   const handlePress = (e) => {
     if (e && e.stopPropagation) e.stopPropagation();
     if (isDead.current) return;
-    isDead.current = true;
-    setIsAngry(true);
-    xAnim.stopAnimation();
-    
-    // Pass coordinates to aim the gun
-    const { pageX, pageY } = e.nativeEvent;
-    onHit(id, pageX, pageY);
-    
+    isDead.current = true; setIsAngry(true); xAnim.stopAnimation();
+    const { pageX, pageY } = e.nativeEvent; onHit(id, pageX, pageY);
     setTimeout(() => onEscape(id), 800);
   };
 
   return (
     <Animated.View style={[styles.entityWrapper, { top: yPos, left: xAnim }]} onStartShouldSetResponder={() => true} onResponderGrant={handlePress}>
       <View style={styles.hitArea}>
-        <Text selectable={false} style={[styles.birdEmoji, { transform: [{ scaleX: direction === 1 ? -1 : 1 }] }]}>
-          {isAngry ? '🤬' : '🦅'}
-        </Text>
+        <Text selectable={false} style={[styles.birdEmoji, { transform: [{ scaleX: dir === 1 ? -1 : 1 }] }]}>{isAngry ? '🤬' : '🦅'}</Text>
+      </View>
+    </Animated.View>
+  );
+});
+
+// Obstacle: Frog jumping
+const Frog = React.memo(({ id, speed, onHit, onEscape }) => {
+  const dir = useRef(Math.random() > 0.5 ? 1 : -1).current; 
+  const xAnim = useRef(new Animated.Value(dir === 1 ? -100 : width + 100)).current;
+  const yAnim = useRef(new Animated.Value(height - 150)).current;
+  const isDead = useRef(false);
+
+  useEffect(() => {
+    Animated.timing(xAnim, { toValue: dir === 1 ? width + 100 : -100, duration: speed, easing: Easing.linear, useNativeDriver: false }).start(({ finished }) => { if (finished && !isDead.current) onEscape(id); });
+    Animated.loop(Animated.sequence([
+      Animated.timing(yAnim, { toValue: height - 400, duration: 400, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.timing(yAnim, { toValue: height - 150, duration: 400, easing: Easing.in(Easing.quad), useNativeDriver: false })
+    ])).start();
+  }, []);
+
+  const handlePress = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (isDead.current) return;
+    isDead.current = true; xAnim.stopAnimation(); yAnim.stopAnimation();
+    const { pageX, pageY } = e.nativeEvent; onHit(id, pageX, pageY);
+    setTimeout(() => onEscape(id), 500);
+  };
+
+  return (
+    <Animated.View style={[styles.entityWrapper, { top: yAnim, left: xAnim }]} onStartShouldSetResponder={() => true} onResponderGrant={handlePress}>
+      <View style={styles.hitArea}>
+        <Text selectable={false} style={[styles.birdEmoji, { transform: [{ scaleX: dir === 1 ? -1 : 1 }] }]}>{isDead.current ? '💥' : '🐸'}</Text>
+      </View>
+    </Animated.View>
+  );
+});
+
+// Obstacle: Fast Rabbit hopping
+const Rabbit = React.memo(({ id, speed, onHit, onEscape }) => {
+  const dir = useRef(Math.random() > 0.5 ? 1 : -1).current; 
+  const xAnim = useRef(new Animated.Value(dir === 1 ? -100 : width + 100)).current;
+  const yAnim = useRef(new Animated.Value(height - 150)).current;
+  const isDead = useRef(false);
+
+  useEffect(() => {
+    Animated.timing(xAnim, { toValue: dir === 1 ? width + 100 : -100, duration: speed, easing: Easing.linear, useNativeDriver: false }).start(({ finished }) => { if (finished && !isDead.current) onEscape(id); });
+    Animated.loop(Animated.sequence([
+      Animated.timing(yAnim, { toValue: height - 250, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.timing(yAnim, { toValue: height - 150, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: false })
+    ])).start();
+  }, []);
+
+  const handlePress = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (isDead.current) return;
+    isDead.current = true; xAnim.stopAnimation(); yAnim.stopAnimation();
+    const { pageX, pageY } = e.nativeEvent; onHit(id, pageX, pageY);
+    setTimeout(() => onEscape(id), 500);
+  };
+
+  return (
+    <Animated.View style={[styles.entityWrapper, { top: yAnim, left: xAnim }]} onStartShouldSetResponder={() => true} onResponderGrant={handlePress}>
+      <View style={styles.hitArea}>
+        <Text selectable={false} style={[styles.birdEmoji, { transform: [{ scaleX: dir === 1 ? -1 : 1 }] }]}>{isDead.current ? '💥' : '🐰'}</Text>
       </View>
     </Animated.View>
   );
@@ -517,34 +706,18 @@ const Bird = React.memo(({ id, speed, onHit, onEscape }) => {
 // ---------------- STYLES ----------------
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    paddingTop: 60,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-  },
-  darkOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)', 
-  },
-  homeBox: {
-    flex: 1,
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 40,
-    zIndex: 10,
-  },
-  title: { fontSize: 54, fontWeight: '900', color: '#00E676', marginBottom: 10, textShadowColor: '#00E676', textShadowRadius: 15 },
+  container: { flex: 1, alignItems: 'center', paddingTop: 30, overflow: 'hidden', backgroundColor: '#000' },
+  darkOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  homeBox: { flex: 1, width: '100%', alignItems: 'center', paddingHorizontal: 20, paddingTop: 40, zIndex: 10 },
+  title: { fontSize: 48, fontWeight: '900', color: '#00E676', marginBottom: 10, textShadowColor: '#00E676', textShadowRadius: 15 },
   playingTitle: { fontSize: 36, fontWeight: '900', color: '#FFF', marginBottom: 5, textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 10 },
-  subtitle: { fontSize: 20, color: '#FFF', marginBottom: 30, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 5 },
+  subtitle: { fontSize: 20, color: '#FFF', marginBottom: 20, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 5 },
   input: { width: '85%', backgroundColor: 'rgba(0, 0, 0, 0.7)', color: '#FFF', padding: 15, borderRadius: 15, marginBottom: 15, fontSize: 16, borderWidth: 2, borderColor: '#00E676', shadowColor: '#00E676', shadowOpacity: 0.5, shadowRadius: 10 },
-  leaderboardBox: { marginTop: 40, width: '90%', backgroundColor: 'rgba(0,0,0,0.8)', padding: 20, borderRadius: 20, borderWidth: 2, borderColor: '#448AFF', alignItems: 'center', shadowColor: '#448AFF', shadowOpacity: 0.5, shadowRadius: 15 },
-  leaderboardTitle: { fontSize: 24, color: '#FFD740', fontWeight: 'bold', marginBottom: 15, textShadowColor: '#FFD740', textShadowRadius: 10 },
-  lbRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.2)' },
-  lbName: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  lbScore: { color: '#00E676', fontSize: 18, fontWeight: '900' },
+  leaderboardBox: { marginTop: 20, width: '90%', backgroundColor: 'rgba(0,0,0,0.8)', padding: 15, borderRadius: 20, borderWidth: 2, borderColor: '#448AFF', alignItems: 'center' },
+  leaderboardTitle: { fontSize: 18, color: '#FFD740', fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+  lbRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.2)' },
+  lbName: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  lbScore: { color: '#00E676', fontSize: 16, fontWeight: '900' },
   
   targetBanner: { backgroundColor: 'rgba(0,0,0,0.7)', paddingVertical: 8, paddingHorizontal: 25, borderRadius: 25, marginBottom: 10, borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)' },
   targetText: { fontSize: 18, color: '#FFF', fontWeight: 'bold' },
@@ -559,11 +732,19 @@ const styles = StyleSheet.create({
   overlayScore: { fontSize: 30, color: '#FFF', fontWeight: 'bold', marginBottom: 10 },
   overlaySubtitle: { fontSize: 22, color: '#A0A0B0', marginBottom: 30 },
   
-  btnRow: { flexDirection: 'row', gap: 15, marginTop: 20 },
-  startButton: { backgroundColor: '#00E676', paddingVertical: 18, paddingHorizontal: 45, borderRadius: 30, elevation: 10, shadowColor: '#00E676', shadowOpacity: 0.6, shadowRadius: 15 },
-  primaryButton: { backgroundColor: '#448AFF', paddingVertical: 18, paddingHorizontal: 35, borderRadius: 30, elevation: 10, shadowColor: '#448AFF', shadowOpacity: 0.6, shadowRadius: 15 },
-  secondaryButton: { backgroundColor: '#555', paddingVertical: 18, paddingHorizontal: 35, borderRadius: 30, elevation: 5 },
-  startButtonText: { fontSize: 20, color: '#FFFFFF', fontWeight: '900', textTransform: 'uppercase' },
+  modalOverlay: { backgroundColor: 'rgba(0,0,0,0.8)', ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', zIndex: 2000 },
+  modalContent: { backgroundColor: '#222', padding: 25, borderRadius: 20, width: '90%', alignItems: 'center', borderWidth: 2, borderColor: '#00E676' },
+  pickerColumn: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', marginHorizontal: 5, borderRadius: 10 },
+  pickerItem: { color: '#888', fontSize: 18, textAlign: 'center', paddingVertical: 10 },
+  pickerItemActive: { color: '#00E676', fontWeight: 'bold', fontSize: 22 },
+
+  fogOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 40, justifyContent: 'center', alignItems: 'center' }, // Requires backdropFilter inline or injected CSS for web
+  
+  btnRow: { flexDirection: 'row', gap: 15, marginTop: 10 },
+  startButton: { backgroundColor: '#00E676', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30, elevation: 10 },
+  primaryButton: { backgroundColor: '#448AFF', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30, elevation: 10 },
+  secondaryButton: { backgroundColor: '#555', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30, elevation: 5 },
+  startButtonText: { fontSize: 18, color: '#FFFFFF', fontWeight: '900', textTransform: 'uppercase' },
 
   entityWrapper: { position: 'absolute', zIndex: 5 },
   hitArea: { padding: 30, alignItems: 'center', justifyContent: 'center', userSelect: 'none' },
@@ -572,12 +753,11 @@ const styles = StyleSheet.create({
   knotBase: { position: 'absolute', bottom: -10, width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 10, borderLeftColor: 'transparent', borderRightColor: 'transparent', zIndex: -1 },
   birdEmoji: { fontSize: 55, textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 3, height: 6 }, textShadowRadius: 5, userSelect: 'none' },
 
-  // Cannon Styles
   cannonBase: { position: 'absolute', bottom: 0, left: width / 2 - 40, width: 80, height: 60, alignItems: 'center', justifyContent: 'flex-end', zIndex: 50, pointerEvents: 'none' },
-  cannonBarrelContainer: { position: 'absolute', bottom: 30, width: 24, height: 180, alignItems: 'center', justifyContent: 'flex-start', zIndex: 1 },
-  barrelVisible: { width: 24, height: 90, backgroundColor: '#37474F', borderWidth: 2, borderColor: '#263238', borderRadius: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 5, elevation: 5 },
+  cannonBarrelContainer: { position: 'absolute', bottom: 30, width: 24, height: 200, alignItems: 'center', justifyContent: 'flex-start', zIndex: 1 },
+  barrelVisible: { width: 24, height: 100, backgroundColor: '#37474F', borderWidth: 2, borderColor: '#263238', borderRadius: 8 },
   barrelHighlight: { position: 'absolute', left: 2, top: 2, width: 6, height: '90%', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 5 },
-  cannonMount: { width: 80, height: 50, backgroundColor: '#263238', borderTopLeftRadius: 40, borderTopRightRadius: 40, borderWidth: 3, borderColor: '#111', zIndex: 2, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.8, shadowRadius: 8, elevation: 10 },
-  cannonMountInner: { width: 30, height: 30, backgroundColor: '#00E676', borderRadius: 15, borderWidth: 2, borderColor: '#FFF', shadowColor: '#00E676', shadowOpacity: 1, shadowRadius: 10 },
-  muzzleFlash: { position: 'absolute', top: -10, width: 50, height: 50, backgroundColor: '#FFFF00', borderRadius: 25, shadowColor: '#FFFF00', shadowOpacity: 1, shadowRadius: 25, zIndex: 10 },
+  cannonMount: { width: 80, height: 50, backgroundColor: '#263238', borderTopLeftRadius: 40, borderTopRightRadius: 40, borderWidth: 3, borderColor: '#111', zIndex: 2, alignItems: 'center', justifyContent: 'center' },
+  cannonMountInner: { width: 30, height: 30, backgroundColor: '#00E676', borderRadius: 15, borderWidth: 2, borderColor: '#FFF' },
+  muzzleFlash: { position: 'absolute', top: -10, width: 60, height: 60, backgroundColor: '#FFFF00', borderRadius: 30, zIndex: 10 },
 });
