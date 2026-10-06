@@ -533,29 +533,32 @@ export default function App() {
 
 const FogOverlay = React.memo(() => {
   const slideAnim = useRef(new Animated.Value(width)).current;
+  const slideAnim2 = useRef(new Animated.Value(width * 1.5)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(slideAnim, { toValue: 0, duration: 1500, easing: Easing.out(Easing.quad), useNativeDriver: false }),
-      Animated.timing(opacityAnim, { toValue: 1, duration: 1500, useNativeDriver: false })
-    ]).start(() => {
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(slideAnim, { toValue: -width, duration: 2000, easing: Easing.in(Easing.quad), useNativeDriver: false }),
-          Animated.timing(opacityAnim, { toValue: 0, duration: 2000, useNativeDriver: false })
-        ]).start();
-      }, 1500);
-    });
+      Animated.timing(slideAnim, { toValue: -width * 1.2, duration: 4000, easing: Easing.linear, useNativeDriver: false }),
+      Animated.timing(slideAnim2, { toValue: -width * 1.5, duration: 5000, easing: Easing.linear, useNativeDriver: false }),
+      Animated.sequence([
+        Animated.timing(opacityAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
+        Animated.delay(2000),
+        Animated.timing(opacityAnim, { toValue: 0, duration: 1000, useNativeDriver: false })
+      ])
+    ]).start();
   }, []);
 
   return (
-    <Animated.View style={[styles.fogOverlay, { left: slideAnim, opacity: opacityAnim }]} pointerEvents="none">
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-        <Text selectable={false} style={{ fontSize: 150, opacity: 0.9 }}>☁️☁️☁️</Text>
-        <Text selectable={false} style={{ fontSize: 180, opacity: 0.9, marginLeft: 50 }}>☁️☁️☁️☁️</Text>
-        <Text selectable={false} style={{ fontSize: 150, opacity: 0.9, marginRight: 50 }}>☁️☁️☁️</Text>
-      </View>
+    <Animated.View style={[styles.fogOverlay, { opacity: opacityAnim }]} pointerEvents="none">
+      <Animated.View style={{ position: 'absolute', top: '10%', left: slideAnim, flexDirection: 'row' }}>
+        <Text selectable={false} style={{ fontSize: 160, opacity: 0.95 }}>☁️☁️☁️☁️☁️</Text>
+      </Animated.View>
+      <Animated.View style={{ position: 'absolute', top: '40%', left: slideAnim2, flexDirection: 'row' }}>
+        <Text selectable={false} style={{ fontSize: 220, opacity: 0.85 }}>☁️☁️☁️☁️</Text>
+      </Animated.View>
+      <Animated.View style={{ position: 'absolute', bottom: '15%', left: slideAnim, flexDirection: 'row' }}>
+        <Text selectable={false} style={{ fontSize: 180, opacity: 0.95 }}>☁️☁️☁️☁️☁️</Text>
+      </Animated.View>
     </Animated.View>
   );
 });
@@ -790,7 +793,7 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: '#222', padding: 25, borderRadius: 20, width: '90%', alignItems: 'center', borderWidth: 2, borderColor: '#00E676' },
 
 
-  fogOverlay: { position: 'absolute', top: 0, bottom: 0, width: '100%', height: '100%', backgroundColor: 'rgba(255,255,255,0.85)', zIndex: 40, justifyContent: 'center', alignItems: 'center' }, // Cloud blur effect
+  fogOverlay: { position: 'absolute', top: 0, bottom: 0, width: '100%', height: '100%', zIndex: 40, justifyContent: 'center', alignItems: 'center' }, // Volumetric clouds
   
   btnRow: { flexDirection: 'row', gap: 15, marginTop: 10 },
   startButton: { backgroundColor: '#00E676', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30, elevation: 10 },
@@ -806,20 +809,23 @@ const styles = StyleSheet.create({
   birdEmoji: { fontSize: 55, textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 3, height: 6 }, textShadowRadius: 5, userSelect: 'none' },
 
   cannonWrapper: { position: 'absolute', bottom: 0, width: '100%', alignItems: 'center', pointerEvents: 'none', zIndex: 50 },
-  cannonBase: { width: 100, height: 80, alignItems: 'center', justifyContent: 'flex-end' },
-  cannonBarrelContainer: { position: 'absolute', bottom: 40, width: 34, height: 260, alignItems: 'center', justifyContent: 'flex-start', zIndex: 1 },
+  cannonBase: { width: 70, height: 45, alignItems: 'center', justifyContent: 'flex-end' },
   
-  barrelMain: { width: 30, height: 130, backgroundColor: '#455A64', borderWidth: 2, borderColor: '#1C313A', borderTopLeftRadius: 5, borderTopRightRadius: 5, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 0.6, shadowRadius: 5, elevation: 10 },
-  barrelHighlightLight: { position: 'absolute', left: 2, top: 0, width: 6, height: '100%', backgroundColor: 'rgba(255,255,255,0.3)' },
-  barrelHighlightDark: { position: 'absolute', right: 2, top: 0, width: 6, height: '100%', backgroundColor: 'rgba(0,0,0,0.4)' },
-  barrelStripe: { position: 'absolute', top: 20, width: '100%', height: 4, backgroundColor: '#00E676', shadowColor: '#00E676', shadowOpacity: 1, shadowRadius: 10 },
+  // Rotating Barrel Assembly (height 180, center is 90. Placed at bottom: -80, so pivot is at bottom: 10, which matches the center of the mount's arc)
+  cannonBarrelContainer: { position: 'absolute', bottom: -80, width: 26, height: 180, alignItems: 'center', justifyContent: 'flex-start', zIndex: 1 },
   
-  barrelMuzzle: { position: 'absolute', top: -10, width: 42, height: 20, backgroundColor: '#263238', borderRadius: 4, borderWidth: 2, borderColor: '#111', alignItems: 'center', justifyContent: 'flex-start' },
-  muzzleInner: { width: 26, height: 6, backgroundColor: '#000', borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
+  barrelMain: { width: 22, height: 90, backgroundColor: '#455A64', borderWidth: 1.5, borderColor: '#1C313A', borderTopLeftRadius: 4, borderTopRightRadius: 4, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 2, height: 2 }, shadowOpacity: 0.6, shadowRadius: 3, elevation: 5 },
+  barrelHighlightLight: { position: 'absolute', left: 1, top: 0, width: 4, height: '100%', backgroundColor: 'rgba(255,255,255,0.3)' },
+  barrelHighlightDark: { position: 'absolute', right: 1, top: 0, width: 4, height: '100%', backgroundColor: 'rgba(0,0,0,0.4)' },
+  barrelStripe: { position: 'absolute', top: 15, width: '100%', height: 3, backgroundColor: '#00E676', shadowColor: '#00E676', shadowOpacity: 1, shadowRadius: 5 },
   
-  muzzleFlash: { position: 'absolute', top: -50, width: 70, height: 70, backgroundColor: '#FFFF00', borderRadius: 35, zIndex: 10, shadowColor: '#FF3333', shadowOpacity: 1, shadowRadius: 30, opacity: 0.9 },
+  barrelMuzzle: { position: 'absolute', top: -8, width: 30, height: 16, backgroundColor: '#263238', borderRadius: 4, borderWidth: 1.5, borderColor: '#111', alignItems: 'center', justifyContent: 'flex-start' },
+  muzzleInner: { width: 18, height: 4, backgroundColor: '#000', borderBottomLeftRadius: 3, borderBottomRightRadius: 3 },
+  
+  muzzleFlash: { position: 'absolute', top: -35, width: 50, height: 50, backgroundColor: '#FFFF00', borderRadius: 25, zIndex: 10, shadowColor: '#FF3333', shadowOpacity: 1, shadowRadius: 20, opacity: 0.9 },
 
-  cannonMountOuter: { width: 100, height: 60, backgroundColor: '#37474F', borderTopLeftRadius: 50, borderTopRightRadius: 50, borderWidth: 4, borderColor: '#1C313A', zIndex: 2, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: -5 }, shadowOpacity: 0.8, shadowRadius: 10, elevation: 15 },
-  cannonMountInner: { width: 50, height: 50, backgroundColor: '#263238', borderRadius: 25, borderWidth: 3, borderColor: '#546E7A', alignItems: 'center', justifyContent: 'center' },
-  cannonCoreGlow: { width: 20, height: 20, backgroundColor: '#00E5FF', borderRadius: 10, shadowColor: '#00E5FF', shadowOpacity: 1, shadowRadius: 15, elevation: 10 },
+  // Turret Mount
+  cannonMountOuter: { width: 70, height: 45, backgroundColor: '#37474F', borderTopLeftRadius: 35, borderTopRightRadius: 35, borderWidth: 3, borderColor: '#1C313A', zIndex: 2, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.8, shadowRadius: 5, elevation: 8 },
+  cannonMountInner: { position: 'absolute', bottom: 10 - 17, width: 34, height: 34, backgroundColor: '#263238', borderRadius: 17, borderWidth: 2, borderColor: '#546E7A', alignItems: 'center', justifyContent: 'center' },
+  cannonCoreGlow: { width: 14, height: 14, backgroundColor: '#00E5FF', borderRadius: 7, shadowColor: '#00E5FF', shadowOpacity: 1, shadowRadius: 10, elevation: 8 },
 });
