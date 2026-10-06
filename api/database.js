@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { sql } from '@vercel/postgres';
 
 export default async function handler(req, res) {
   // CORS headers
@@ -13,61 +13,95 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get current DB from Vercel Serverless Redis
-    let db = await kv.get('neon_db');
-    if (!db) {
-      db = { players: [], scores: [], challenges: [] };
-    }
+    // Ensure Postgres tables exist!
+    await sql`
+      CREATE TABLE IF NOT EXISTS players (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) UNIQUE NOT NULL,
+        dob VARCHAR(50)
+      );
+    `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS scores (
+        id SERIAL PRIMARY KEY,
+        player_id INTEGER REFERENCES players(id),
+        score INTEGER NOT NULL,
+        level INTEGER NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS challenges (
+        id SERIAL PRIMARY KEY,
+        challenger_name VARCHAR(255) NOT NULL,
+        target_name VARCHAR(255) NOT NULL,
+        target_score INTEGER NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
 
     const { action, payload } = req.body;
 
     if (action === 'login') {
       const { name, dob } = payload;
-      const player = db.players.find(p => p.name === name);
+      const { rows } = await sql`SELECT * FROM players WHERE name = ${name}`;
+      const player = rows[0];
+      
       if (player) {
         if (dob && player.dob && player.dob !== dob) {
-          return res.status(403).json({ error: 'Name already exists on another device!' });
+          return res.status(403).json({ error: 'Name already exists on another device! Please choose a unique name.' });
         }
         return res.status(200).json({ player });
       } else {
-        const newPlayer = { id: Date.now(), name, dob: dob || '' };
-        db.players.push(newPlayer);
-        await kv.set('neon_db', db);
-        return res.status(200).json({ player: newPlayer });
+        const { rows: inserted } = await sql`INSERT INTO players (name, dob) VALUES (${name}, ${dob || ''}) RETURNING *`;
+        return res.status(200).json({ player: inserted[0] });
       }
     }
 
     if (action === 'save_score') {
-      db.scores.push({ ...payload, id: Date.now(), timestamp: new Date().toISOString() });
-      await kv.set('neon_db', db);
+      await sql`INSERT INTO scores (player_id, score, level) VALUES (${payload.player_id}, ${payload.score}, ${payload.level})`;
       return res.status(200).json({ success: true });
     }
 
     if (action === 'get_data') {
       const { playerId, playerName } = payload;
       
-      const playerMaxScores = {};
-      db.scores.forEach(s => {
-        if (!playerMaxScores[s.player_id] || playerMaxScores[s.player_id].score < s.score) playerMaxScores[s.player_id] = s;
-      });
-      const globalTop = Object.values(playerMaxScores)
-        .sort((a,b) => b.score - a.score)
-        .slice(0,10)
-        .map(s => {
-          const p = db.players.find(p => p.id === s.player_id);
-          return { name: p ? p.name : 'Unknown', score: s.score, level: s.level };
-        });
+      // Global Top 10
+      const { rows: globalTop } = await sql`
+        SELECT p.name, MAX(s.score) as score, MAX(s.level) as level 
+        FROM scores s 
+        JOIN players p ON s.player_id = p.id 
+        GROUP BY p.id 
+        ORDER BY score DESC 
+        LIMIT 10
+      `;
         
-      const personal = db.scores.filter(s => s.player_id === playerId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0,10);
-      const challenges = db.challenges.filter(c => c.target_name === playerName).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0,5);
-      const allPlayers = db.players.map(p => p.name).filter(n => n !== playerName);
+      // Personal Last 10
+      const { rows: personal } = await sql`
+        SELECT score, level, timestamp 
+        FROM scores 
+        WHERE player_id = ${playerId} 
+        ORDER BY timestamp DESC 
+        LIMIT 10
+      `;
+      
+      // Challenges
+      const { rows: challenges } = await sql`
+        SELECT * FROM challenges 
+        WHERE target_name = ${playerName} 
+        ORDER BY timestamp DESC 
+        LIMIT 5
+      `;
+      
+      // All Players (exclude self)
+      const { rows: allPlayerRows } = await sql`SELECT name FROM players WHERE name != ${playerName}`;
+      const allPlayers = allPlayerRows.map(r => r.name);
 
       return res.status(200).json({ globalTop, personal, challenges, allPlayers });
     }
 
     if (action === 'send_challenge') {
-      db.challenges.push({ ...payload, id: Date.now(), timestamp: new Date().toISOString() });
-      await kv.set('neon_db', db);
+      await sql`INSERT INTO challenges (challenger_name, target_name, target_score) VALUES (${payload.challenger_name}, ${payload.target_name}, ${payload.target_score})`;
       return res.status(200).json({ success: true });
     }
 
@@ -75,6 +109,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: 'Database error. Make sure Vercel KV is linked.' });
+    return res.status(500).json({ error: error.message });
   }
 }
