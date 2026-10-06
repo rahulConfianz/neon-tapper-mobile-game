@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, TextInput, Dimensions, Animated, Easing, ScrollView, ImageBackground, Platform, createElement } from 'react-native';
-import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+let Audio;
+try {
+    Audio = require('expo-av').Audio;
+} catch (e) {
+    console.log("expo-av native module not found, sound will be disabled.");
+}
 
 const { width, height } = Dimensions.get('window');
 const API_URL = Platform.OS === 'web'
@@ -72,11 +78,13 @@ export default function App() {
     useEffect(() => {
         async function init() {
             try {
-                const { sound: p } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/pop.ogg' });
-                const { sound: m } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg' });
-                const { sound: a } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/woodpecker.ogg' });
-                const { sound: w } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/slip.ogg' });
-                setSoundPop(p); setSoundMiss(m); setSoundAngry(a); setSoundWrong(w);
+                if (Audio) {
+                    const { sound: p } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/pop.ogg' });
+                    const { sound: m } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg' });
+                    const { sound: a } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/woodpecker.ogg' });
+                    const { sound: w } = await Audio.Sound.createAsync({ uri: 'https://actions.google.com/sounds/v1/cartoon/slip.ogg' });
+                    setSoundPop(p); setSoundMiss(m); setSoundAngry(a); setSoundWrong(w);
+                }
             } catch (e) { console.log(e) }
 
             try {
