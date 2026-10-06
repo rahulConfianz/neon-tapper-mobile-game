@@ -225,15 +225,15 @@ export default function App() {
     // Fog logic
     useEffect(() => {
         if (gameState === 'PLAYING') {
-            const fogInterval = setInterval(() => {
-                if (Math.random() < 0.25) { // 25% chance of fog every 12 seconds
-                    const dur = 5000 + (level * 1500); // Increases with level
-                    setFogDuration(dur);
-                    setIsFoggy(true);
-                    setTimeout(() => setIsFoggy(false), dur);
-                }
-            }, 12000);
-            return () => clearInterval(fogInterval);
+            // The cloud storm will only trigger if the player takes longer than 10 seconds to finish the level!
+            const fogTimeout = setTimeout(() => {
+                const dur = 8000 + (level * 1500); // Duration increases with level
+                setFogDuration(dur);
+                setIsFoggy(true);
+                setTimeout(() => setIsFoggy(false), dur);
+            }, 10000); // 10 seconds into the level
+            
+            return () => clearTimeout(fogTimeout);
         } else {
             setIsFoggy(false);
         }
@@ -684,33 +684,43 @@ export default function App() {
 // ---------------- ANIMATED COMPONENTS ----------------
 
 const FogOverlay = React.memo(({ duration }) => {
-    const slideAnim = useRef(new Animated.Value(width)).current;
-    const slideAnim2 = useRef(new Animated.Value(width * 1.5)).current;
     const opacityAnim = useRef(new Animated.Value(0)).current;
+    
+    // Create 8 massive layers of clouds to completely flood the screen with mist!
+    const numRows = 8;
+    const slideAnims = useRef(Array.from({ length: numRows }, () => new Animated.Value(width + 300))).current;
 
     useEffect(() => {
+        const animations = slideAnims.map((anim, index) => {
+            // Randomize speed slightly per row for a flowing, swirling mist parallax effect
+            const speedModifier = 0.7 + (Math.random() * 0.5); 
+            return Animated.timing(anim, {
+                toValue: -8000, 
+                duration: duration * speedModifier, 
+                easing: Easing.linear, 
+                useNativeDriver: false 
+            });
+        });
+
         Animated.parallel([
-            Animated.timing(slideAnim, { toValue: -6000, duration: duration, easing: Easing.linear, useNativeDriver: false }),
-            Animated.timing(slideAnim2, { toValue: -6000, duration: duration * 1.2, easing: Easing.linear, useNativeDriver: false }),
+            ...animations,
             Animated.sequence([
-                Animated.timing(opacityAnim, { toValue: 1, duration: 1500, useNativeDriver: false }),
-                Animated.delay(Math.max(0, duration - 3000)),
-                Animated.timing(opacityAnim, { toValue: 0, duration: 1500, useNativeDriver: false })
+                Animated.timing(opacityAnim, { toValue: 1, duration: 2000, useNativeDriver: false }),
+                Animated.delay(Math.max(0, duration - 4000)),
+                Animated.timing(opacityAnim, { toValue: 0, duration: 2000, useNativeDriver: false })
             ])
         ]).start();
     }, [duration]);
 
     return (
-        <Animated.View style={[styles.fogOverlay, { opacity: opacityAnim, backgroundColor: 'rgba(255, 255, 255, 0.85)' }]} pointerEvents="none">
-            <Animated.View style={{ position: 'absolute', top: '-10%', left: slideAnim, flexDirection: 'row' }}>
-                <Text selectable={false} style={{ fontSize: 250, opacity: 0.95 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
-            </Animated.View>
-            <Animated.View style={{ position: 'absolute', top: '25%', left: slideAnim2, flexDirection: 'row' }}>
-                <Text selectable={false} style={{ fontSize: 300, opacity: 0.85 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
-            </Animated.View>
-            <Animated.View style={{ position: 'absolute', bottom: '-5%', left: slideAnim, flexDirection: 'row' }}>
-                <Text selectable={false} style={{ fontSize: 250, opacity: 0.95 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
-            </Animated.View>
+        <Animated.View style={[styles.fogOverlay, { opacity: opacityAnim }]} pointerEvents="none">
+            {slideAnims.map((anim, i) => (
+                <Animated.View key={i} style={{ position: 'absolute', top: `${(i * 15) - 10}%`, left: anim, flexDirection: 'row' }}>
+                    <Text selectable={false} style={{ fontSize: 250, opacity: 0.95 }}>
+                        ☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️
+                    </Text>
+                </Animated.View>
+            ))}
         </Animated.View>
     );
 });
