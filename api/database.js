@@ -54,6 +54,14 @@ export default async function handler(req, res) {
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS rewards (
+        id SERIAL PRIMARY KEY,
+        player_name VARCHAR(255) NOT NULL,
+        points INTEGER NOT NULL,
+        reason TEXT NOT NULL
+      );
+    `;
 
     const { action, payload } = req.body;
 
@@ -115,7 +123,10 @@ export default async function handler(req, res) {
       // Notes
       const notes = await sql`SELECT * FROM notes WHERE target_name = ${playerName} ORDER BY timestamp DESC LIMIT 5`;
 
-      return res.status(200).json({ globalTop, personal, challenges, allPlayers, notes });
+      // Rewards
+      const rewards = await sql`SELECT * FROM rewards WHERE player_name = ${playerName}`;
+
+      return res.status(200).json({ globalTop, personal, challenges, allPlayers, notes, rewards });
     }
 
     if (action === 'send_challenge') {
@@ -135,6 +146,16 @@ export default async function handler(req, res) {
 
     if (action === 'delete_note') {
       await sql`DELETE FROM notes WHERE id = ${payload.id}`;
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === 'send_reward') {
+      await sql`INSERT INTO rewards (player_name, points, reason) VALUES (${payload.target_name}, ${payload.points}, ${payload.reason})`;
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === 'clear_rewards') {
+      await sql`DELETE FROM rewards WHERE player_name = ${payload.player_name}`;
       return res.status(200).json({ success: true });
     }
 
