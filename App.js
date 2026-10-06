@@ -68,6 +68,7 @@ export default function App() {
     const [frogs, setFrogs] = useState([]);
     const [rabbits, setRabbits] = useState([]);
     const [isFoggy, setIsFoggy] = useState(false);
+    const [fogDuration, setFogDuration] = useState(5000);
 
     const [soundPop, setSoundPop] = useState();
     const [soundMiss, setSoundMiss] = useState();
@@ -226,15 +227,17 @@ export default function App() {
         if (gameState === 'PLAYING') {
             const fogInterval = setInterval(() => {
                 if (Math.random() < 0.25) { // 25% chance of fog every 12 seconds
+                    const dur = 5000 + (level * 1500); // Increases with level
+                    setFogDuration(dur);
                     setIsFoggy(true);
-                    setTimeout(() => setIsFoggy(false), 5000);
+                    setTimeout(() => setIsFoggy(false), dur);
                 }
             }, 12000);
             return () => clearInterval(fogInterval);
         } else {
             setIsFoggy(false);
         }
-    }, [gameState]);
+    }, [gameState, level]);
 
     // Timer logic
     useEffect(() => {
@@ -603,7 +606,7 @@ export default function App() {
                         {rabbits.map(b => <Rabbit key={b.id} id={b.id} speed={b.speed} onHit={handleObstacleHit} onEscape={removeRabbit} />)}
 
                         {/* Fog Obstacle Layer */}
-                        {isFoggy && <FogOverlay />}
+                        {isFoggy && <FogOverlay duration={fogDuration} />}
 
                         {/* Sci-Fi Gun perfectly attached to bottom center */}
                         <Cannon angle={gunAngle} isShooting={isShooting} />
@@ -680,33 +683,33 @@ export default function App() {
 
 // ---------------- ANIMATED COMPONENTS ----------------
 
-const FogOverlay = React.memo(() => {
+const FogOverlay = React.memo(({ duration }) => {
     const slideAnim = useRef(new Animated.Value(width)).current;
     const slideAnim2 = useRef(new Animated.Value(width * 1.5)).current;
     const opacityAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         Animated.parallel([
-            Animated.timing(slideAnim, { toValue: -4000, duration: 6000, easing: Easing.linear, useNativeDriver: false }),
-            Animated.timing(slideAnim2, { toValue: -4000, duration: 8000, easing: Easing.linear, useNativeDriver: false }),
+            Animated.timing(slideAnim, { toValue: -6000, duration: duration, easing: Easing.linear, useNativeDriver: false }),
+            Animated.timing(slideAnim2, { toValue: -6000, duration: duration * 1.2, easing: Easing.linear, useNativeDriver: false }),
             Animated.sequence([
                 Animated.timing(opacityAnim, { toValue: 1, duration: 1500, useNativeDriver: false }),
-                Animated.delay(3000),
+                Animated.delay(Math.max(0, duration - 3000)),
                 Animated.timing(opacityAnim, { toValue: 0, duration: 1500, useNativeDriver: false })
             ])
         ]).start();
-    }, []);
+    }, [duration]);
 
     return (
-        <Animated.View style={[styles.fogOverlay, { opacity: opacityAnim }]} pointerEvents="none">
-            <Animated.View style={{ position: 'absolute', top: '5%', left: slideAnim, flexDirection: 'row' }}>
-                <Text selectable={false} style={{ fontSize: 160, opacity: 0.95 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
+        <Animated.View style={[styles.fogOverlay, { opacity: opacityAnim, backgroundColor: 'rgba(255, 255, 255, 0.85)' }]} pointerEvents="none">
+            <Animated.View style={{ position: 'absolute', top: '-10%', left: slideAnim, flexDirection: 'row' }}>
+                <Text selectable={false} style={{ fontSize: 250, opacity: 0.95 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
             </Animated.View>
-            <Animated.View style={{ position: 'absolute', top: '35%', left: slideAnim2, flexDirection: 'row' }}>
-                <Text selectable={false} style={{ fontSize: 220, opacity: 0.85 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
+            <Animated.View style={{ position: 'absolute', top: '25%', left: slideAnim2, flexDirection: 'row' }}>
+                <Text selectable={false} style={{ fontSize: 300, opacity: 0.85 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
             </Animated.View>
-            <Animated.View style={{ position: 'absolute', bottom: '10%', left: slideAnim, flexDirection: 'row' }}>
-                <Text selectable={false} style={{ fontSize: 180, opacity: 0.95 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
+            <Animated.View style={{ position: 'absolute', bottom: '-5%', left: slideAnim, flexDirection: 'row' }}>
+                <Text selectable={false} style={{ fontSize: 250, opacity: 0.95 }}>☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️☁️</Text>
             </Animated.View>
         </Animated.View>
     );
