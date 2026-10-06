@@ -4,7 +4,9 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
-const API_URL = '/api/database'; // Vercel Serverless Function
+const API_URL = Platform.OS === 'web'
+    ? '/api/database'
+    : 'https://YOUR-VERCEL-APP-LINK.vercel.app/api/database';
 
 const LEVEL_COLORS = [
     { name: 'Red', hex: '#FF3333' },
@@ -247,19 +249,19 @@ export default function App() {
 
     const handleGameOver = () => {
         let finalScore = score;
-        
+
         // If they failed the challenge
         if (activeChallenge) {
             finalScore -= 50;
             setNotification(`CHALLENGE FAILED! -50 PTS`);
             setTimeout(() => setNotification(''), 4000);
-            
+
             // Reward the challenger!
             fetch(API_URL, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'send_reward', payload: { target_name: activeChallenge.challenger_name, points: 100, reason: `${player.name} failed to beat your challenge! Enjoy your bonus points!` } })
             }).catch(() => { });
-            
+
             setActiveChallenge(null);
         }
 
