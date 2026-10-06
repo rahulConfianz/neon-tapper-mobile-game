@@ -527,15 +527,36 @@ export default function App() {
 // ---------------- ANIMATED COMPONENTS ----------------
 
 const Cannon = ({ angle, isShooting }) => (
-  <View style={styles.cannonBase}>
-    <Animated.View style={[styles.cannonBarrelContainer, { transform: [{ rotate: `${angle}deg` }] }]}>
-      {isShooting && <View style={styles.muzzleFlash} />}
-      <View style={styles.barrelVisible}>
-        <View style={styles.barrelHighlight} />
+  <View style={styles.cannonWrapper}>
+    <View style={styles.cannonBase}>
+      {/* Rotating Barrel Assembly */}
+      <Animated.View style={[styles.cannonBarrelContainer, { transform: [{ rotate: `${angle}deg` }] }]}>
+        
+        {/* Main Barrel Body */}
+        <View style={styles.barrelMain}>
+          <View style={styles.barrelHighlightLight} />
+          <View style={styles.barrelHighlightDark} />
+          
+          <View style={styles.barrelStripe} />
+          <View style={[styles.barrelStripe, { top: 40 }]} />
+          <View style={[styles.barrelStripe, { top: 60 }]} />
+        </View>
+
+        {/* Barrel Muzzle (Tip) */}
+        <View style={styles.barrelMuzzle}>
+          <View style={styles.muzzleInner} />
+        </View>
+
+        {/* Dynamic Muzzle Flash */}
+        {isShooting && <View style={styles.muzzleFlash} />}
+      </Animated.View>
+
+      {/* Stationary Turret Base */}
+      <View style={styles.cannonMountOuter}>
+        <View style={styles.cannonMountInner}>
+          <View style={styles.cannonCoreGlow} />
+        </View>
       </View>
-    </Animated.View>
-    <View style={styles.cannonMount}>
-      <View style={styles.cannonMountInner} />
     </View>
   </View>
 );
@@ -579,7 +600,11 @@ const Balloon = React.memo(({ id, color, isTarget, duration, size, onHit, onEsca
     if (e && e.stopPropagation) e.stopPropagation();
     if (isDead.current) return;
     isDead.current = true; setIsExploding(true); yAnim.stopAnimation();
-    const { pageX, pageY } = e.nativeEvent;
+    
+    // Safely extract coordinates to prevent crashes!
+    const pageX = e?.nativeEvent?.pageX;
+    const pageY = e?.nativeEvent?.pageY;
+    
     onHit(id, isTarget, pageX, pageY);
     setTimeout(() => onEscape(id), 200);
   };
@@ -613,7 +638,11 @@ const Bird = React.memo(({ id, speed, onHit, onEscape }) => {
     if (e && e.stopPropagation) e.stopPropagation();
     if (isDead.current) return;
     isDead.current = true; setIsAngry(true); xAnim.stopAnimation();
-    const { pageX, pageY } = e.nativeEvent; onHit(id, pageX, pageY);
+    
+    const pageX = e?.nativeEvent?.pageX;
+    const pageY = e?.nativeEvent?.pageY;
+    
+    onHit(id, pageX, pageY);
     setTimeout(() => onEscape(id), 800);
   };
 
@@ -645,7 +674,9 @@ const Frog = React.memo(({ id, speed, onHit, onEscape }) => {
     if (e && e.stopPropagation) e.stopPropagation();
     if (isDead.current) return;
     isDead.current = true; xAnim.stopAnimation(); yAnim.stopAnimation();
-    const { pageX, pageY } = e.nativeEvent; onHit(id, pageX, pageY);
+    const pageX = e?.nativeEvent?.pageX;
+    const pageY = e?.nativeEvent?.pageY;
+    onHit(id, pageX, pageY);
     setTimeout(() => onEscape(id), 500);
   };
 
@@ -677,7 +708,9 @@ const Rabbit = React.memo(({ id, speed, onHit, onEscape }) => {
     if (e && e.stopPropagation) e.stopPropagation();
     if (isDead.current) return;
     isDead.current = true; xAnim.stopAnimation(); yAnim.stopAnimation();
-    const { pageX, pageY } = e.nativeEvent; onHit(id, pageX, pageY);
+    const pageX = e?.nativeEvent?.pageX;
+    const pageY = e?.nativeEvent?.pageY;
+    onHit(id, pageX, pageY);
     setTimeout(() => onEscape(id), 500);
   };
 
@@ -738,11 +771,21 @@ const styles = StyleSheet.create({
   knotBase: { position: 'absolute', bottom: -10, width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 10, borderLeftColor: 'transparent', borderRightColor: 'transparent', zIndex: -1 },
   birdEmoji: { fontSize: 55, textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 3, height: 6 }, textShadowRadius: 5, userSelect: 'none' },
 
-  cannonBase: { position: 'absolute', bottom: 0, left: width / 2 - 40, width: 80, height: 60, alignItems: 'center', justifyContent: 'flex-end', zIndex: 50, pointerEvents: 'none' },
-  cannonBarrelContainer: { position: 'absolute', bottom: 30, width: 24, height: 200, alignItems: 'center', justifyContent: 'flex-start', zIndex: 1 },
-  barrelVisible: { width: 24, height: 100, backgroundColor: '#37474F', borderWidth: 2, borderColor: '#263238', borderRadius: 8 },
-  barrelHighlight: { position: 'absolute', left: 2, top: 2, width: 6, height: '90%', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 5 },
-  cannonMount: { width: 80, height: 50, backgroundColor: '#263238', borderTopLeftRadius: 40, borderTopRightRadius: 40, borderWidth: 3, borderColor: '#111', zIndex: 2, alignItems: 'center', justifyContent: 'center' },
-  cannonMountInner: { width: 30, height: 30, backgroundColor: '#00E676', borderRadius: 15, borderWidth: 2, borderColor: '#FFF' },
-  muzzleFlash: { position: 'absolute', top: -10, width: 60, height: 60, backgroundColor: '#FFFF00', borderRadius: 30, zIndex: 10 },
+  cannonWrapper: { position: 'absolute', bottom: 0, width: '100%', alignItems: 'center', pointerEvents: 'none', zIndex: 50 },
+  cannonBase: { width: 100, height: 80, alignItems: 'center', justifyContent: 'flex-end' },
+  cannonBarrelContainer: { position: 'absolute', bottom: 40, width: 34, height: 260, alignItems: 'center', justifyContent: 'flex-start', zIndex: 1 },
+  
+  barrelMain: { width: 30, height: 130, backgroundColor: '#455A64', borderWidth: 2, borderColor: '#1C313A', borderTopLeftRadius: 5, borderTopRightRadius: 5, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 0.6, shadowRadius: 5, elevation: 10 },
+  barrelHighlightLight: { position: 'absolute', left: 2, top: 0, width: 6, height: '100%', backgroundColor: 'rgba(255,255,255,0.3)' },
+  barrelHighlightDark: { position: 'absolute', right: 2, top: 0, width: 6, height: '100%', backgroundColor: 'rgba(0,0,0,0.4)' },
+  barrelStripe: { position: 'absolute', top: 20, width: '100%', height: 4, backgroundColor: '#00E676', shadowColor: '#00E676', shadowOpacity: 1, shadowRadius: 10 },
+  
+  barrelMuzzle: { position: 'absolute', top: -10, width: 42, height: 20, backgroundColor: '#263238', borderRadius: 4, borderWidth: 2, borderColor: '#111', alignItems: 'center', justifyContent: 'flex-start' },
+  muzzleInner: { width: 26, height: 6, backgroundColor: '#000', borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
+  
+  muzzleFlash: { position: 'absolute', top: -50, width: 70, height: 70, backgroundColor: '#FFFF00', borderRadius: 35, zIndex: 10, shadowColor: '#FF3333', shadowOpacity: 1, shadowRadius: 30, opacity: 0.9 },
+
+  cannonMountOuter: { width: 100, height: 60, backgroundColor: '#37474F', borderTopLeftRadius: 50, borderTopRightRadius: 50, borderWidth: 4, borderColor: '#1C313A', zIndex: 2, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: -5 }, shadowOpacity: 0.8, shadowRadius: 10, elevation: 15 },
+  cannonMountInner: { width: 50, height: 50, backgroundColor: '#263238', borderRadius: 25, borderWidth: 3, borderColor: '#546E7A', alignItems: 'center', justifyContent: 'center' },
+  cannonCoreGlow: { width: 20, height: 20, backgroundColor: '#00E5FF', borderRadius: 10, shadowColor: '#00E5FF', shadowOpacity: 1, shadowRadius: 15, elevation: 10 },
 });
