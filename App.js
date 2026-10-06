@@ -38,6 +38,13 @@ export default function App() {
 
 
 
+  const [allPlayers, setAllPlayers] = useState([]);
+  const [notes, setNotes] = useState([]);
+
+  // Active Challenge logic
+  const [activeChallenge, setActiveChallenge] = useState(null);
+  const [notification, setNotification] = useState('');
+
   // Challenge modal
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [challengeTarget, setChallengeTarget] = useState('');
@@ -98,6 +105,7 @@ export default function App() {
         setPersonalScores(data.personal);
         setChallenges(data.challenges);
         setAllPlayers(data.allPlayers);
+        setNotes(data.notes || []);
       }
     } catch(e) { console.log('DB fetch failed', e) }
   };
@@ -151,6 +159,47 @@ export default function App() {
       fetchData(player.id, player.name);
     } catch(e) {}
   };
+
+  const handleAcceptChallenge = async (c) => {
+    setChallenges(prev => prev.filter(x => x.id !== c.id));
+    setActiveChallenge(c);
+    try {
+      await fetch(API_URL, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'delete_challenge', payload: { id: c.id } }) });
+    } catch(e) {}
+    startGame();
+  };
+
+  const handleRejectChallenge = async (id) => {
+    setChallenges(prev => prev.filter(x => x.id !== id));
+    try {
+      await fetch(API_URL, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'delete_challenge', payload: { id } }) });
+    } catch(e) {}
+  };
+
+  const clearNote = async (id) => {
+    setNotes(prev => prev.filter(x => x.id !== id));
+    try {
+      await fetch(API_URL, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'delete_note', payload: { id } }) });
+    } catch(e) {}
+  };
+
+  useEffect(() => {
+    if (activeChallenge && gameState === 'PLAYING') {
+      if (score > activeChallenge.target_score) {
+        setScore(s => s + 100);
+        setNotification(`CHALLENGE BEATEN! +100 PTS!`);
+        setTimeout(() => setNotification(''), 4000);
+        
+        // Notify Challenger
+        fetch(API_URL, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ action: 'send_note', payload: { target_name: activeChallenge.challenger_name, message: `${player.name} beat your challenge of ${activeChallenge.target_score}!` } })
+        }).catch(()=>{});
+        
+        setActiveChallenge(null);
+      }
+    }
+  }, [score, activeChallenge, gameState, player.name]);
 
   // Fog logic
   useEffect(() => {
@@ -399,11 +448,33 @@ export default function App() {
               </View>
             </View>
 
+            {notes.length > 0 && (
+              <View style={[styles.leaderboardBox, { borderColor: '#FFEA00', shadowColor: '#FFEA00' }]}>
+                <Text selectable={false} style={[styles.leaderboardTitle, { color: '#FFEA00' }]}>🔔 Notifications 🔔</Text>
+                {notes.map(n => (
+                  <View key={n.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 10 }}>
+                    <Text style={[styles.lbName, { width: '80%' }]}>{n.message}</Text>
+                    <Text style={{ color: '#FF5252', fontWeight: 'bold', fontSize: 18 }} onPress={() => clearNote(n.id)}>✕</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {challenges.length > 0 && (
               <View style={[styles.leaderboardBox, { borderColor: '#FF5252', shadowColor: '#FF5252' }]}>
                 <Text selectable={false} style={[styles.leaderboardTitle, { color: '#FF5252' }]}>⚔️ Challenges Received ⚔️</Text>
                 {challenges.map(c => (
-                  <Text key={c.id} style={styles.lbName}>{c.challenger_name} challenged you to beat {c.target_score}!</Text>
+                  <View key={c.id} style={{ flexDirection: 'column', width: '100%', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderColor: '#555' }}>
+                    <Text style={[styles.lbName, { textAlign: 'center' }]}>{c.challenger_name} challenged you to beat {c.target_score}!</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, justifyContent: 'center' }}>
+                      <View style={[styles.primaryButton, { paddingVertical: 8, paddingHorizontal: 15 }]} onStartShouldSetResponder={() => true} onResponderGrant={() => handleAcceptChallenge(c)}>
+                        <Text style={{ color: '#000', fontWeight: 'bold' }}>Accept</Text>
+                      </View>
+                      <View style={[styles.secondaryButton, { paddingVertical: 8, paddingHorizontal: 15 }]} onStartShouldSetResponder={() => true} onResponderGrant={() => handleRejectChallenge(c.id)}>
+                        <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Reject</Text>
+                      </View>
+                    </View>
+                  </View>
                 ))}
               </View>
             )}
@@ -451,6 +522,18 @@ export default function App() {
               <Text selectable={false} style={styles.hits}>Popped: {targetsHit}/10</Text>
               <Text selectable={false} style={styles.timer}>Time: {timeLeft}s</Text>
             </View>
+
+            {activeChallenge && (
+              <View style={{ position: 'absolute', top: 130, backgroundColor: 'rgba(255, 51, 51, 0.8)', padding: 5, borderRadius: 10, zIndex: 20 }}>
+                <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Beating {activeChallenge.challenger_name}: {activeChallenge.target_score}</Text>
+              </View>
+            )}
+
+            {notification ? (
+              <View style={{ position: 'absolute', top: '50%', backgroundColor: 'rgba(0, 230, 118, 0.9)', padding: 20, borderRadius: 20, zIndex: 100 }}>
+                <Text style={{ color: '#000', fontWeight: '900', fontSize: 24 }}>{notification}</Text>
+              </View>
+            ) : null}
 
             {balloons.map(b => <Balloon key={b.id} id={b.id} color={b.color} isTarget={b.isTarget} duration={b.duration} size={b.size} onHit={handleHitBalloon} onEscape={removeBalloon} />)}
             {birds.map(b => <Bird key={b.id} id={b.id} speed={b.speed} onHit={handleObstacleHit} onEscape={removeBird} />)}

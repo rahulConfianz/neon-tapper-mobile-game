@@ -46,6 +46,14 @@ export default async function handler(req, res) {
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS notes (
+        id SERIAL PRIMARY KEY,
+        target_name VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
 
     const { action, payload } = req.body;
 
@@ -104,11 +112,29 @@ export default async function handler(req, res) {
       const allPlayerRows = await sql`SELECT name FROM players WHERE name != ${playerName}`;
       const allPlayers = allPlayerRows.map(r => r.name);
 
-      return res.status(200).json({ globalTop, personal, challenges, allPlayers });
+      // Notes
+      const notes = await sql`SELECT * FROM notes WHERE target_name = ${playerName} ORDER BY timestamp DESC LIMIT 5`;
+
+      return res.status(200).json({ globalTop, personal, challenges, allPlayers, notes });
     }
 
     if (action === 'send_challenge') {
       await sql`INSERT INTO challenges (challenger_name, target_name, target_score) VALUES (${payload.challenger_name}, ${payload.target_name}, ${payload.target_score})`;
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === 'delete_challenge') {
+      await sql`DELETE FROM challenges WHERE id = ${payload.id}`;
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === 'send_note') {
+      await sql`INSERT INTO notes (target_name, message) VALUES (${payload.target_name}, ${payload.message})`;
+      return res.status(200).json({ success: true });
+    }
+
+    if (action === 'delete_note') {
+      await sql`DELETE FROM notes WHERE id = ${payload.id}`;
       return res.status(200).json({ success: true });
     }
 
