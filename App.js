@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, Text, View, TextInput, Dimensions, Animated, Easing, ScrollView, ImageBackground, Platform } from 'react-native';
+import { StyleSheet, Text, View, TextInput, Dimensions, Animated, Easing, ScrollView, ImageBackground, Platform, createElement } from 'react-native';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -37,11 +37,7 @@ export default function App() {
   const [challenges, setChallenges] = useState([]);
   const [allPlayers, setAllPlayers] = useState([]);
 
-  // Date picker states
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selYear, setSelYear] = useState('2000');
-  const [selMonth, setSelMonth] = useState('01');
-  const [selDay, setSelDay] = useState('01');
+
 
   // Challenge modal
   const [showChallengeModal, setShowChallengeModal] = useState(false);
@@ -114,7 +110,13 @@ export default function App() {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ action: 'login', payload: { name: player.name.trim(), dob: player.dob } })
       });
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (err) {
+        throw new Error('Server did not return JSON. The Database might be crashing or not linked properly.');
+      }
+      
       if (res.ok) {
         setPlayer(data.player);
         await AsyncStorage.setItem('neonPlayer', JSON.stringify(data.player));
@@ -124,7 +126,7 @@ export default function App() {
         alert(data.error);
       }
     } catch(e) {
-      alert("Vercel DB not configured yet! Please read the setup instructions.");
+      alert("Connection Error: " + e.message);
     }
   };
 
@@ -338,14 +340,30 @@ export default function App() {
               onChangeText={t => setPlayer({...player, name: t})}
             />
             
-            {/* Custom DOB Picker Trigger */}
-            <View 
-              style={[styles.input, { justifyContent: 'center' }]} 
-              onStartShouldSetResponder={() => true} 
-              onResponderGrant={() => setShowDatePicker(true)}
-            >
-              <Text style={{color: player.dob ? '#FFF' : '#BBB'}}>{player.dob || 'Select Date of Birth'}</Text>
-            </View>
+            {/* Native Browser Calendar Picker (User Friendly!) */}
+            {Platform.OS === 'web' ? (
+              <View style={[styles.input, { padding: 0, overflow: 'hidden' }]}>
+                {createElement('input', {
+                  type: 'date',
+                  value: player.dob,
+                  onChange: (e) => setPlayer({ ...player, dob: e.target.value }),
+                  style: { 
+                    width: '100%', height: '100%', padding: '15px', 
+                    backgroundColor: 'transparent', color: '#FFF', 
+                    border: 'none', outline: 'none', fontSize: '16px',
+                    colorScheme: 'dark'
+                  }
+                })}
+              </View>
+            ) : (
+              <TextInput 
+                style={styles.input} 
+                placeholder="Date of Birth (YYYY-MM-DD)" 
+                placeholderTextColor="#BBB"
+                value={player.dob}
+                onChangeText={t => setPlayer({...player, dob: t})}
+              />
+            )}
 
             <View style={styles.btnRow}>
               <View style={[styles.startButton, { opacity: player.name.trim() ? 1 : 0.5 }]} onStartShouldSetResponder={() => true} onResponderGrant={handleLogin}>
@@ -475,39 +493,7 @@ export default function App() {
           </View>
         )}
 
-        {/* ---------------- DATE PICKER MODAL ---------------- */}
-        {showDatePicker && (
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={{color: '#FFF', fontSize: 20, fontWeight: 'bold', marginBottom: 15}}>Select Date of Birth</Text>
-              <View style={{flexDirection: 'row', gap: 10, height: 200}}>
-                {/* Years */}
-                <ScrollView style={styles.pickerColumn}>
-                  {Array.from({length: 2026 - 1950 + 1}, (_, i) => 1950 + i).map(y => (
-                    <Text key={y} style={[styles.pickerItem, selYear == y && styles.pickerItemActive]} onPress={() => setSelYear(y.toString())}>{y}</Text>
-                  ))}
-                </ScrollView>
-                {/* Months */}
-                <ScrollView style={styles.pickerColumn}>
-                  {Array.from({length: 12}, (_, i) => String(i + 1).padStart(2, '0')).map(m => (
-                    <Text key={m} style={[styles.pickerItem, selMonth == m && styles.pickerItemActive]} onPress={() => setSelMonth(m)}>{m}</Text>
-                  ))}
-                </ScrollView>
-                {/* Days */}
-                <ScrollView style={styles.pickerColumn}>
-                  {Array.from({length: 31}, (_, i) => String(i + 1).padStart(2, '0')).map(d => (
-                    <Text key={d} style={[styles.pickerItem, selDay == d && styles.pickerItemActive]} onPress={() => setSelDay(d)}>{d}</Text>
-                  ))}
-                </ScrollView>
-              </View>
-              <View style={styles.btnRow}>
-                <View style={styles.primaryButton} onStartShouldSetResponder={() => true} onResponderGrant={() => { setPlayer({...player, dob: `${selYear}-${selMonth}-${selDay}`}); setShowDatePicker(false); }}>
-                  <Text style={styles.startButtonText}>Confirm</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
+
 
         {/* ---------------- CHALLENGE MODAL ---------------- */}
         {showChallengeModal && (
@@ -735,9 +721,7 @@ const styles = StyleSheet.create({
   
   modalOverlay: { backgroundColor: 'rgba(0,0,0,0.8)', ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', zIndex: 2000 },
   modalContent: { backgroundColor: '#222', padding: 25, borderRadius: 20, width: '90%', alignItems: 'center', borderWidth: 2, borderColor: '#00E676' },
-  pickerColumn: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', marginHorizontal: 5, borderRadius: 10 },
-  pickerItem: { color: '#888', fontSize: 18, textAlign: 'center', paddingVertical: 10 },
-  pickerItemActive: { color: '#00E676', fontWeight: 'bold', fontSize: 22 },
+
 
   fogOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 40, justifyContent: 'center', alignItems: 'center' }, // Requires backdropFilter inline or injected CSS for web
   
