@@ -249,6 +249,15 @@ export default function App() {
   const removeFrog = useCallback((id) => setFrogs(prev => prev.filter(b => b.id !== id)), []);
   const removeRabbit = useCallback((id) => setRabbits(prev => prev.filter(b => b.id !== id)), []);
 
+  const playSound = async (sound) => {
+    try {
+      if (sound) {
+        await sound.setPositionAsync(0);
+        await sound.playAsync();
+      }
+    } catch (e) {}
+  };
+
   const updateGunAim = (pageX, pageY) => {
     const dx = pageX - width / 2;
     const dy = height - 50 - pageY;
