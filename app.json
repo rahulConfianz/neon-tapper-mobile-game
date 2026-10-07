@@ -21,9 +21,6 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "@react-native-community/datetimepicker"
-    ],
     "owner": "rahulconfianzs-team",
     "extra": {
       "eas": {

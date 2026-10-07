@@ -441,45 +441,29 @@ export default function App() {
                             onChangeText={t => setPlayer({ ...player, name: t })}
                         />
 
-                        {/* Native Browser Calendar Picker (User Friendly!) */}
-                        {Platform.OS === 'web' ? (
-                            <View style={[styles.input, { padding: 0, overflow: 'hidden' }]}>
-                                {require('react-native').createElement('input', {
-                                    type: 'date',
-                                    value: player.dob,
-                                    onChange: (e) => setPlayer({ ...player, dob: e.target.value }),
-                                    style: {
-                                        width: '100%', height: '100%', padding: '15px',
-                                        backgroundColor: 'transparent', color: '#FFF',
-                                        border: 'none', outline: 'none', fontSize: '16px',
-                                        colorScheme: 'dark'
-                                    }
-                                })}
-                            </View>
-                        ) : (
-                            <>
-                                <Text style={[styles.input, { color: player.dob ? '#00E676' : '#999', paddingTop: 18 }]} onPress={() => setShowDatePicker(true)}>
-                                    {player.dob || "Date of Birth (Select Date)"}
-                                </Text>
-                                {showDatePicker && (
-                                    <DateTimePicker
-                                        value={player.dob ? new Date(player.dob) : new Date(2000, 0, 1)}
-                                        mode="date"
-                                        display="spinner"
-                                        onChange={(event, selectedDate) => {
-                                            setShowDatePicker(Platform.OS === 'ios');
-                                            if (selectedDate) {
-                                                const d = new Date(selectedDate);
-                                                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-                                                setPlayer({ ...player, dob: d.toISOString().split('T')[0] });
-                                            }
-                                        }}
-                                        maximumDate={new Date('2026-12-31')}
-                                        minimumDate={new Date('1950-01-01')}
-                                    />
-                                )}
-                            </>
-                        )}
+                        {/* Standard Date Picker for Native Apps */}
+                        <>
+                            <Text style={[styles.input, { color: player.dob ? '#00E676' : '#999', paddingTop: 18 }]} onPress={() => setShowDatePicker(true)}>
+                                {player.dob || "Date of Birth (Select Date)"}
+                            </Text>
+                            {showDatePicker && (
+                                <DateTimePicker
+                                    value={player.dob ? new Date(player.dob) : new Date(2000, 0, 1)}
+                                    mode="date"
+                                    display="spinner"
+                                    onChange={(event, selectedDate) => {
+                                        setShowDatePicker(Platform.OS === 'ios');
+                                        if (selectedDate) {
+                                            const d = new Date(selectedDate);
+                                            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                                            setPlayer({ ...player, dob: d.toISOString().split('T')[0] });
+                                        }
+                                    }}
+                                    maximumDate={new Date('2026-12-31')}
+                                    minimumDate={new Date('1950-01-01')}
+                                />
+                            )}
+                        </>
 
                         <View style={styles.btnRow}>
                             <View style={[styles.startButton, { opacity: player.name.trim() ? 1 : 0.5 }]} onStartShouldSetResponder={() => true} onResponderGrant={handleLogin}>
