@@ -4,13 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as NavigationBar from 'expo-navigation-bar';
 import { StatusBar } from 'expo-status-bar';
-
-let Audio;
-try {
-    Audio = require('expo-av').Audio;
-} catch (e) {
-    console.log("expo-av native module not found, sound will be disabled.");
-}
+import { Audio } from 'expo-av';
 
 const { width, height } = Dimensions.get('window');
 const API_URL = Platform.OS === 'web'
