@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, Text, View, TextInput, Dimensions, Animated, Easing, ScrollView, ImageBackground, Platform, createElement } from 'react-native';
+import { StyleSheet, Text, View, TextInput, Dimensions, Animated, Easing, ScrollView, ImageBackground, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -444,7 +444,7 @@ export default function App() {
                         {/* Native Browser Calendar Picker (User Friendly!) */}
                         {Platform.OS === 'web' ? (
                             <View style={[styles.input, { padding: 0, overflow: 'hidden' }]}>
-                                {createElement('input', {
+                                {require('react-native').createElement('input', {
                                     type: 'date',
                                     value: player.dob,
                                     onChange: (e) => setPlayer({ ...player, dob: e.target.value }),
