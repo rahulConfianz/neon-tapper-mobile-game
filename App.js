@@ -86,7 +86,7 @@ export default function App() {
                 try {
                     await NavigationBar.setVisibilityAsync("hidden");
                     await NavigationBar.setBehaviorAsync("overlay-swipe");
-                } catch(e) {}
+                } catch (e) { }
             }
 
             try {
@@ -232,7 +232,7 @@ export default function App() {
                 setIsFoggy(true);
                 setTimeout(() => setIsFoggy(false), dur);
             }, 10000); // 10 seconds into the level
-            
+
             return () => clearTimeout(fogTimeout);
         } else {
             setIsFoggy(false);
@@ -437,7 +437,7 @@ export default function App() {
                 {gameState === 'LOGIN' && (
                     <View style={styles.homeBox}>
                         <Text selectable={false} style={styles.title}>Neon Tapper</Text>
-                        <Text selectable={false} style={styles.subtitle}>System DB Connection</Text>
+                        <Text selectable={false} style={styles.subtitle}>The Colourful Baloon Breaker Game</Text>
 
                         <TextInput
                             style={styles.input}
@@ -685,7 +685,7 @@ export default function App() {
 
 const FogOverlay = React.memo(({ duration }) => {
     const opacityAnim = useRef(new Animated.Value(0)).current;
-    
+
     // Create 8 massive layers of clouds to completely flood the screen with mist!
     const numRows = 8;
     const slideAnims = useRef(Array.from({ length: numRows }, () => new Animated.Value(width + 300))).current;
@@ -693,12 +693,12 @@ const FogOverlay = React.memo(({ duration }) => {
     useEffect(() => {
         const animations = slideAnims.map((anim, index) => {
             // Randomize speed slightly per row for a flowing, swirling mist parallax effect
-            const speedModifier = 0.7 + (Math.random() * 0.5); 
+            const speedModifier = 0.7 + (Math.random() * 0.5);
             return Animated.timing(anim, {
-                toValue: -8000, 
-                duration: duration * speedModifier, 
-                easing: Easing.linear, 
-                useNativeDriver: false 
+                toValue: -8000,
+                duration: duration * speedModifier,
+                easing: Easing.linear,
+                useNativeDriver: false
             });
         });
 
